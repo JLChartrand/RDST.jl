@@ -17,6 +17,8 @@ const norm = Float64(1.0 / (1 + m1))
 const two17 = Int64(131072)
 const two53 = Int64(9007199254740992)
 
+const DEFAULT_SEED = [ 12345, 12345, 12345, 12345, 12345, 12345 ]
+
 const A1p0 =  [  0     1     0   ;
                  0     0     1   ;
                  a13   a12   0   ]
@@ -38,9 +40,9 @@ const A1p127 = [ 2427906178  3580155704   949770784 ;
                  1988835001   986791581  1230515664 ]
 
 const A2p127 = [ 1464411153   277697599  1610723613 ;
-                   32183930  1464411153  1022607788 ; 
+                   32183930  1464411153  1022607788 ;
                  2824425944    32183930  2093834863 ]
-      
+
 const InvA1  = [  184888585           0  1945170933 ;
                           1           0           0 ;
                           0           1           0 ]
@@ -49,7 +51,7 @@ const InvA2 =  [          0   360363334  4225571728 ;
                           1           0           0 ;
                           0           1           0 ]
 
-       
+
 """
 Ensures a given seed is valid for MRG32k3a random number generator.
 """
@@ -66,7 +68,7 @@ mutable struct MRG32k3a <: AbstractStreamableRNG
     Cg::Vector{Int64}  # the current state of the RNG
     Bg::Vector{Int64}  # the start point of the current substream
     Ig::Vector{Int64}  # the start point of the current stream
-    
+
     function MRG32k3a(x::Vector{Int})
         @assert(checkseed(x))
         new(copy(x),copy(x),copy(x))
@@ -77,16 +79,16 @@ mutable struct MRG32k3a <: AbstractStreamableRNG
         @assert(checkseed(z))
         return new(copy(x),copy(y),copy(z))
     end
-end    
+end
 
 """
 Produces a raw random number with 32 bits of precision.
 """
 
 function rand(rng::MRG32k3a)
-    
+
     p1::Int64 = (a12 * rng.Cg[2] + a13 * rng.Cg[1]) % m1
-    p1 += p1 < 0 ? m1 : 0 
+    p1 += p1 < 0 ? m1 : 0
 
     rng.Cg[1] = rng.Cg[2]
     rng.Cg[2] = rng.Cg[3]
@@ -109,7 +111,7 @@ Seeds a given random number generator with seed x.
 function srand(rng::MRG32k3a,seed::Vector{Int64})
     @assert(checkseed(seed))
     for i = 1:6
-        rng.Cg[i] = rng.Bg[i] = rng.Ig[i] = seed[i]     
+        rng.Cg[i] = rng.Bg[i] = rng.Ig[i] = seed[i]
     end
 end
 """
@@ -143,15 +145,19 @@ end
 # Required to extend randn(), randexp(), and other built-in random functions
 
 #rand(rng::MRG32k3a, ::Type{Base.Random.Close1Open2}) = rand(rng, Base.Random.CloseOpen) + 1.0
-#rand(rng::MRG32k3a, ::Type{Base.Random.CloseOpen}) = rand(rng::MRG32k3a, Float64)   
+#rand(rng::MRG32k3a, ::Type{Base.Random.CloseOpen}) = rand(rng::MRG32k3a, Float64)
 
 
 ############################################################
 """
 An object that generates independent random number streams.
-"""      
+"""
 mutable struct MRG32k3aGen <: AbstractRNGStream
     nextSeed::Vector{Int64}
+
+    function MRG32k3aGen()
+        new(copy(DEFAULT_SEED))
+    end
 
     function MRG32k3aGen(x::Vector{Int})
         @assert(checkseed(x))
@@ -187,10 +193,10 @@ Given an RNG generator object, returns the next RNG stream.
 """
 function next_stream(rng_gen::MRG32k3aGen)
     rng = MRG32k3a(copy(rng_gen.nextSeed))
-    
+
     rng_gen.nextSeed[1:3] = MatVecModM(A1p127,rng_gen.nextSeed[1:3],m1)
     rng_gen.nextSeed[4:6] = MatVecModM(A2p127,rng_gen.nextSeed[4:6],m2)
-    
+
     return rng
 end
 
@@ -249,8 +255,8 @@ function MatTwoPowModM(A::Array{Int64,2}, e::Int64, m::Int64)
     for i = 1:e
         B = MatMatModM(B, B, m)
     end
-    
-    return B    
+
+    return B
 end
 
 """
@@ -261,7 +267,7 @@ function MatPowModM(A::Array{Int64,2}, n::Int64, m::Int64)
     B = diagm([1,1,1])
 
     while n > 0
-        if ( n % 2 == 1 ) 
+        if ( n % 2 == 1 )
             B = MatMatModM(W, B, m)
         end
         W = MatMatModM(W, W, m)
@@ -294,12 +300,12 @@ function advance_state!(rng::MRG32k3a, e::Int64, c::Int64)
         B1 = MatTwoPowModM(InvA1,-e,m1)
         B2 = MatTwoPowModM(InvA2,-e,m2)
     end
-    
+
     if ~(e == 0)
         C1 = MatMatModM(B1,C1,m1)
         C2 = MatMatModM(B2,C2,m2)
     end
 
-    rng.Cg[1:3] = MatVecModM(C1,rng.Cg[1:3],m1) 
-    rng.Cg[4:6] = MatVecModM(C2,rng.Cg[4:6],m2) 
+    rng.Cg[1:3] = MatVecModM(C1,rng.Cg[1:3],m1)
+    rng.Cg[4:6] = MatVecModM(C2,rng.Cg[4:6],m2)
 end
