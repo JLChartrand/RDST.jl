@@ -1,8 +1,5 @@
 Copyright (c) 2018-: Jean Laprés-Chartrand, Fabian Bastin, Francis Huot-Chantal, Julien Codsi, Nicolas Gagné and other contributors:
 
-> Copyright (c) 2012-2015: Harlan Harris, EPRI (Tom Short's code), Chris DuBois,
-> John Myles White, and other contributors.
->
 > Permission is hereby granted, free of charge, to any person obtaining
 > a copy of this software and associated documentation files (the
 > "Software"), to deal in the Software without restriction, including
