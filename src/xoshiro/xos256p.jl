@@ -10,7 +10,7 @@ mutable struct Xoshiro256p <: AbstractStreamableRNG
         new(copy(x),copy(y),copy(z))
     end
 end    
-rolt = ((x::UInt64, k::Int64) -> (x<<k) | (x >> (64 - k)))
+rolt(x::UInt64, k::Int64) = (x<<k) | (x >> (64 - k))
 
 function copy(Xos::Xoshiro256p)
     return Xoshiro256p(Xos.Cg, Xos.Bg, Xos.Ig)
