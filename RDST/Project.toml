@@ -1,8 +1,0 @@
-name = "RDST"
-uuid = "dc077566-edc2-11e8-0ce0-7d758bb9a5d1"
-authors = ["wirelessroom2 <jl_chartrand@hotmail.com>"]
-version = "0.1.0"
-
-[deps]
-Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
-Suppressor = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
