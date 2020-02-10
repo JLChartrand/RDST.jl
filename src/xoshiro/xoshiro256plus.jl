@@ -59,8 +59,8 @@ function show(io::IO,rng::Xoshiro256p)
     print(io,"Full state of Xoshiro256plus generator:\nCg = $(rng.Cg)\nBg = $(rng.Bg)\nIg = $(rng.Ig)")
 end
 
-get_state(rng_gen::MRG32k3aGen) = copy(rng_gen.nextSeed)
-get_state(rng::MRG32k3a) = copy(rng.Cg)
+#get_state(rng_gen::MRG32k3aGen) = copy(rng_gen.nextSeed)
+#get_state(rng::MRG32k3a) = copy(rng.Cg)
 
 """
 Reseeds the RNG generator object.

@@ -64,12 +64,18 @@ function checkseed(x::Vector{Int})
           ~all(x[4:6] .== 0)
 end
 
+"""
+`MRG32k3a()` will generate an instance of `MRG32k3a` with initial seeds `DEFAULT_SEED = [ 12345, 12345, 12345, 12345, 12345, 12345 ]`
+
+`MRG32k3a(x::Vector{Int})` will generate an instance of `MRG32k3a` with initial seeds `x`
+
+`MRG32k3a(x::Vector{Int}, y::Vector{Int}, z::Vector{Int})` will generate an instance of `MRG32k3a` with `Cg = x`, `Bg = y` and `Ig = z`
+"""
 mutable struct MRG32k3a <: AbstractStreamableRNG
     Cg::Vector{Int64}  # the current state of the RNG
     Bg::Vector{Int64}  # the start point of the current substream
     Ig::Vector{Int64}  # the start point of the current stream
-
-    function MRG32k3a(x::Vector{Int})
+    function MRG32k3a(x::Vector{Int} = DEFAULT_SEED)
         @assert(checkseed(x))
         new(copy(x),copy(x),copy(x))
     end
@@ -81,6 +87,11 @@ mutable struct MRG32k3a <: AbstractStreamableRNG
     end
 end
 
+function copy(m::MRG32k3a)
+    MRG32k3a(copy(m.Cg), copy(m.Bg), copy(m.Ig))
+end
+# MRG32k3a produces natively Float64
+rng_native_52(::MRG32k3a) = Float64
 """
 Produces a raw random number with 32 bits of precision.
 """
@@ -113,6 +124,7 @@ function srand(rng::MRG32k3a,seed::Vector{Int64})
     for i = 1:6
         rng.Cg[i] = rng.Bg[i] = rng.Ig[i] = seed[i]
     end
+    rng
 end
 """
 Resets a given random number generator to the beginning of the current stream.
@@ -121,6 +133,7 @@ function reset_stream!(rng::MRG32k3a)
     for i = 1:6
         rng.Cg[i] = rng.Bg[i] = rng.Ig[i]
     end
+    rng
 end
 
 """
@@ -130,6 +143,7 @@ function reset_substream!(rng::MRG32k3a)
     for i = 1:6
         rng.Cg[i] = rng.Bg[i]
     end
+    rng
 end
 """
 Takes a random number generator and shifts seed to next substream.
@@ -140,6 +154,7 @@ function next_substream!(rng::MRG32k3a)
     for i = 1:6
         rng.Cg[i] = rng.Bg[i]
     end
+    rng
 end
 
 # Required to extend randn(), randexp(), and other built-in random functions
@@ -155,11 +170,7 @@ An object that generates independent random number streams.
 mutable struct MRG32k3aGen <: AbstractRNGStream
     nextSeed::Vector{Int64}
 
-    function MRG32k3aGen()
-        new(copy(DEFAULT_SEED))
-    end
-
-    function MRG32k3aGen(x::Vector{Int})
+    function MRG32k3aGen(x::Vector{Int} = DEFAULT_SEED)
         @assert(checkseed(x))
         new(copy(x))
     end
