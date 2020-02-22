@@ -1,5 +1,5 @@
 """
-Streamable Random Number Generator
+Streamable Random Number Generator, see `AbstractStreamableRNG`
 """
 
 module RDST
