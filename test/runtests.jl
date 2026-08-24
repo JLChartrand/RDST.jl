@@ -1,0 +1,435 @@
+using RDST
+using Test
+using Random
+
+statewords(::Type{RDST.LinRNG{N,S}}) where {N,S} = N
+
+@testset "RDST.jl" begin
+
+    @testset "checkseed" begin
+        @test checkseed(RDST.DEFAULT_SEED)
+        @test !checkseed([1, 2, 3, 4, 5])                       # wrong length
+        @test !checkseed([0, 0, 0, 1, 1, 1])                    # all-zero first component
+        @test !checkseed([1, 1, 1, 0, 0, 0])                    # all-zero second component
+        @test !checkseed([-1, 1, 1, 1, 1, 1])                   # negative entry
+        @test !checkseed([RDST.PMF.m1, 1, 1, 1, 1, 1])          # >= m1 in first half
+        @test !checkseed([1, 1, 1, RDST.PMF.m2, 1, 1])          # >= m2 in second half
+        @test checkseed([RDST.PMF.m1 - 1, RDST.PMF.m2 - 1, 7, RDST.PMF.m2 - 1, 3, 9])
+    end
+
+    @testset "MRG32k3a constructors" begin
+        rng = MRG32k3a()
+        @test rng.Cg == RDST.DEFAULT_SEED && rng.Bg == RDST.DEFAULT_SEED && rng.Ig == RDST.DEFAULT_SEED
+
+        seed = [42, 1, 2, 3, 4, 5]
+        rng = MRG32k3a(seed)
+        seed[1] = -100                    # constructor must copy the seed
+        @test rng.Cg[1] == 42
+
+        x = [1, 2, 3, 4, 5, 6]
+        y = [10, 20, 30, 40, 50, 60]
+        z = [100, 200, 300, 400, 500, 600]
+        rng = MRG32k3a(x, y, z)
+        @test rng.Cg == x && rng.Bg == y && rng.Ig == z
+        x[1] = 999                        # no aliasing
+        @test rng.Cg[1] == 1
+
+        @test_throws AssertionError MRG32k3a([0, 0, 0, 1, 1, 1])
+    end
+
+    @testset "MRG32k3a reference values" begin
+        rng = next_stream(MRG32k3aGen())
+        @test [rand(rng) for _ in 1:5] ==
+              [0.12701112204657714, 0.3185275653967945,
+               0.3091860155832701, 0.8258468629271136, 0.2216299157820229]
+
+        for (T, ref) in (
+            (UInt8,   UInt8[0xed, 0x82, 0x51]),
+            (UInt16,  UInt16[0xcced, 0x0582, 0xd051]),
+            (UInt32,  UInt32[0xcced0582, 0xd051b288, 0xbcca9934]),
+            (UInt64,  UInt64[0xcced0582d051b288, 0xbcca99340444f89c, 0x22d387a29770f58a]),
+            (UInt128, UInt128[0xcced0582d051b288bcca99340444f89c,
+                              0x22d387a29770f58a57416a5915ef65d6,
+                              0x9ef65959a1651d5418ebdf4023a8b6d5]),
+            (Int8,    Int8[-19, -126, 81]),
+            (Int16,   Int16[-13075, 1410, -12207]),
+            (Int32,   Int32[-856881790, -799952248, -1127573196]),
+            (Int64,   Int64[-3680279261092924792, -4842890000594569060, 2509498549770712458]),
+            (Int128,  Int128[-67889169649162077992496674455215081316,
+                             46292077500965604301225650373683799510,
+                             -128985226324011672590792899314054547755]),
+            (Float32, Float32[0.8517306, 0.63826084, 0.5828004]),
+            (Float16, Float16[0.2314, 0.377, 0.0791]),
+            (Bool,    Bool[1, 0, 1]),
+        )
+            r = next_stream(MRG32k3aGen())
+            @test [rand(r, T) for _ in 1:3] == ref
+        end
+    end
+
+    @testset "MRG32k3a output properties" begin
+        rng = MRG32k3a()
+        u = [rand(rng) for _ in 1:100_000]
+        @test all(0.0 .<= u .< 1.0)
+        @test abs(sum(u) / length(u) - 0.5) < 0.01
+
+        r = next_stream(MRG32k3aGen())
+        v = [rand(r, 1:10) for _ in 1:10_000]
+        @test all(1 .<= v .<= 10)
+        @test count(==(1), v) > 500 && count(==(10), v) > 500
+    end
+
+    @testset "MRG32k3a streams & substreams" begin
+        gen = MRG32k3aGen()
+        rng1 = next_stream(gen)
+        rng2 = next_stream(gen)
+        first1 = rand(MRG32k3a(copy(rng1.Ig), copy(rng1.Ig), copy(rng1.Ig)))
+        first2 = rand(MRG32k3a(copy(rng2.Ig), copy(rng2.Ig), copy(rng2.Ig)))
+
+        # successive streams are disjoint
+        a = [rand(rng1) for _ in 1:100]
+        b = [rand(rng2) for _ in 1:100]
+        @test Set(a) ∩ Set(b) == Set{Float64}()
+
+        # reset_stream! rewinds to the very beginning
+        rand(rng1); rand(rng1)
+        reset_stream!(rng1)
+        @test rand(rng1) == first1
+
+        # reset_substream!: no next_substream! yet -> back to the stream start
+        reset_substream!(rng2)
+        @test rand(rng2) == first2
+
+        # next_substream! opens a new, different block; reset_substream! rewinds it
+        v1 = rand(rng2)
+        next_substream!(rng2)
+        w1 = rand(rng2)
+        reset_substream!(rng2)
+        @test rand(rng2) == w1          # start of the new substream
+        @test v1 != w1
+    end
+
+    @testset "MRG32k3a state handling" begin
+        rng = next_stream(MRG32k3aGen())
+        state = get_state(rng)
+        xs = [rand(rng) for _ in 1:5]
+
+        clone = MRG32k3a(state, state, state)
+        @test rand(clone) == xs[1]
+
+        st = get_state(rng)
+        st[1] += 1                      # get_state must return an independent copy
+        @test get_state(rng) != st
+
+        c = copy(rng)
+        rand(c); rand(c)
+        @test rand(rng) != rand(c)      # copies evolve independently
+    end
+
+    @testset "MRG32k3a advance_state!" begin
+        ref = next_stream(MRG32k3aGen())
+        vals = [rand(ref) for _ in 1:4]
+
+        rng = MRG32k3a([12345, 12345, 12345, 12345, 12345, 12345])
+        advance_state!(rng, Int64(2), Int64(-1))     # skip n = 2^2 - 1 = 3 values
+        @test rand(rng) == vals[4]
+
+        # backward jump: after consuming vals[4] the position is 4; n = -2^2 = -4
+        advance_state!(rng, Int64(-2), Int64(0))
+        @test rand(rng) == vals[1]
+
+        # e = 0, c = k: plain forward jump
+        rng2 = MRG32k3a([12345, 12345, 12345, 12345, 12345, 12345])
+        advance_state!(rng2, Int64(0), Int64(2))
+        @test rand(rng2) == vals[3]
+    end
+
+    @testset "MRG32k3aGen" begin
+        gen = MRG32k3aGen()
+        @test gen.seed == RDST.DEFAULT_SEED
+        @test get_state(gen) == RDST.DEFAULT_SEED
+
+        custom = MRG32k3aGen([7, 7, 7, 8, 8, 8])
+        @test get_state(custom) == [7, 7, 7, 8, 8, 8]
+        @test_throws AssertionError MRG32k3aGen([0, 0, 0, 1, 1, 1])
+
+        g2 = MRG32k3aGen([1, 2, 3, 4, 5, 6])
+        r = next_stream(g2)
+        @test get_state(g2) != [1, 2, 3, 4, 5, 6]   # internal seed advanced
+    end
+
+    @testset "Xoshiro256p reference values" begin
+        seed = UInt64[0x01, 0x02, 0x03, 0x04]
+        x = Xoshiro256p(seed)
+        @test [RDST.next(x) for _ in 1:5] == UInt64[
+            0x0000000000000005, 0x0000c00000000007, 0x0000c00018000007,
+            0x8001600018040302, 0x8061900024040305]
+
+        x = Xoshiro256p(seed); short_jump(x)
+        @test RDST.next(x) == 1153146630064993313
+        x = Xoshiro256p(seed); long_jump(x)
+        @test RDST.next(x) == 4237864540600467441
+    end
+
+    @testset "Xoshiro256p outputs" begin
+        x = Xoshiro256p(UInt64[1, 2, 3, 4])
+        u = [rand(x) for _ in 1:100_000]
+        @test all(0.0 .<= u .< 1.0)
+        @test abs(sum(u) / length(u) - 0.5) < 0.01
+
+        x = Xoshiro256p(UInt64[1, 2, 3, 4])
+        @test rand(x, UInt64) isa UInt64
+        @test rand(x, Float32) isa Float32
+        @test rand(x, Float16) isa Float16
+
+        v = [rand(x, Int64(1):Int64(10)) for _ in 1:10_000]
+        @test all(1 .<= v .<= 10)
+        counts = [count(==(i), v) for i in 1:10]
+        @test maximum(counts) < 1500 && minimum(counts) > 500
+    end
+
+    @testset "Xoshiro256p streams & substreams" begin
+        seed = UInt64[0x01, 0x02, 0x03, 0x04]
+        x = Xoshiro256p(seed)
+        u0 = RDST.next(x)
+
+        srand(x, seed)
+        @test RDST.next(x) == u0
+
+        x = Xoshiro256p(seed)
+        short_jump(x)
+        after_short = RDST.next(x)
+        reset_substream!(x)
+        @test RDST.next(x) == after_short
+
+        x = Xoshiro256p(seed)
+        long_jump(x)
+        after_long = RDST.next(x)
+        reset_stream!(x)
+        @test RDST.next(x) == after_long
+
+        next_substream!(x)
+        ns = RDST.next(x)
+        reset_substream!(x)
+        @test RDST.next(x) == ns
+    end
+
+    @testset "Xoshiro256p state" begin
+        seed = UInt64[0x01, 0x02, 0x03, 0x04]
+        x = Xoshiro256p(seed)
+        st = get_state(x)
+        @test st isa Vector{UInt64} && length(st) == 4
+        expected = RDST.next(x)
+        y = Xoshiro256p(st)
+        @test RDST.next(y) == expected
+
+        c = copy(x)
+        RDST.next(c)
+        @test RDST.next(x) != RDST.next(c)
+    end
+
+    @testset "Xoshiro256plusGen" begin
+        seed = UInt64[0x0d, 0x0e, 0x0a, 0x0d]
+        gen = Xoshiro256plusGen(seed)
+        @test get_state(gen) == seed
+
+        seed[1] = 0xff                     # generator must own its copy
+        @test get_state(gen)[1] == 0x0d
+
+        r1 = next_stream(gen)
+        r2 = next_stream(gen)
+        @test get_state(r1) != get_state(r2)
+
+        srand(gen, UInt64[1, 1, 1, 1])
+        @test get_state(gen) == UInt64[1, 1, 1, 1]
+        @test_throws ArgumentError Xoshiro256plusGen(UInt64[1, 2, 3])
+    end
+
+    @testset "show methods" begin
+        io = IOBuffer()
+        show(io, MRG32k3a())
+        @test occursin("MRG32k3a", String(take!(io)))
+        show(io, MRG32k3aGen())
+        @test occursin("MRG32k3a", String(take!(io)))
+        show(io, Xoshiro256p(UInt64[1, 2, 3, 4]))
+        @test occursin("Xoshiro256plus", String(take!(io)))
+        show(io, Xoshiro256plusGen(UInt64[1, 2, 3, 4]))
+        @test occursin("Xoshiro256plus", String(take!(io)))
+    end
+
+    @testset "Random API integration" begin
+        m = MRG32k3a()
+        x = Xoshiro256p(UInt64[1, 2, 3, 4])
+        @test m isa AbstractRNG && x isa AbstractRNG
+
+        m1 = copy(m); m2 = copy(m)
+        @test rand(m1) == rand(m2)      # identical copies produce identical values
+        rand(m2)
+        @test rand(m1) != rand(m2)
+    end
+
+    @testset "xoshiro/xoroshiro families" begin
+        # Reference values validated byte-for-byte against the original C
+        # implementations (http://xoshiro.di.unimi.it), seeded via splitmix64(0x12345).
+        function splitmix_seed(nwords)
+            sm = UInt64(0x12345)
+            out = Vector{UInt64}(undef, nwords)
+            for w in 1:nwords
+                sm += 0x9E3779B97f4A7C15
+                z = sm
+                z = (z ⊻ (z >> 30)) * 0xBF58476D1CE4E5B9
+                z = (z ⊻ (z >> 27)) * 0x94D049BB133111EB
+                v = z ⊻ (z >> 31)
+                out[w] = v == 0 ? UInt64(1) : v
+            end
+            out
+        end
+
+        refs = [
+            ("x128p", RDST.Xoroshiro128p,
+             [16078810691027958445, 16308033409981753773, 2459436067589474410],
+             UInt64(3256517475130558849), UInt64(9914398136390617976)),
+            ("x128ss", RDST.Xoroshiro128ss,
+             [1368380786106859145, 4084486448798807325, 5543098162342028434],
+             UInt64(13270538264984994966), UInt64(11920770361629577860)),
+            ("x128pp", RDST.Xoroshiro128pp,
+             [1673598725564225250, 4573856857203627046, 16115075492912290848],
+             UInt64(6730732423063272729), UInt64(3990584750745030224)),
+            ("x256p", RDST.Xoshiro256p,
+             [9347869054091033467, 4771635083329966370, 15370539120085914707],
+             UInt64(5160113462924517804), UInt64(15646076907341602619)),
+            ("x256ss", RDST.Xoshiro256ss,
+             [1368380786106859145, 14675459340006078963, 5910136538917692306],
+             UInt64(10763142405286072350), UInt64(16578569578879967412)),
+            ("x256pp", RDST.Xoshiro256pp,
+             [17674668620475692482, 5475324084790473842, 16549419549621501831],
+             UInt64(16231616900645524224), UInt64(13257993063221304277)),
+            ("x512p", RDST.Xoshiro512p,
+             [17616468189221365395, 12780371331858795586, 9670281856951386802],
+             UInt64(16537263715482372943), UInt64(2902670574299405512)),
+            ("x512ss", RDST.Xoshiro512ss,
+             [1368380786106859145, 14675459340006078963, 11156859077635828455],
+             UInt64(2926543538459652119), UInt64(10490133114023169214)),
+            ("x512pp", RDST.Xoshiro512pp,
+             [4070133962183833323, 16966997717490759717, 12310346514993803299],
+             UInt64(13604293740491481571), UInt64(151834235382922295)),
+        ]
+        for (name, T, seq, shortv, longv) in refs
+            seed = splitmix_seed(statewords(T))
+            x = T(seed)
+            @test [RDST.next(x) for _ in 1:3] == seq
+            y = T(copy(seed)); short_jump(y)
+            @test RDST.next(y) == shortv
+            z = T(copy(seed)); long_jump(z)
+            @test RDST.next(z) == longv
+        end
+
+        allvariants = [
+            ("Xoroshiro128plus",     RDST.Xoroshiro128p,    RDST.Xoroshiro128pGen),
+            ("Xoroshiro128starstar", RDST.Xoroshiro128ss,   RDST.Xoroshiro128ssGen),
+            ("Xoshiro256plusplus",   RDST.Xoshiro256pp,     RDST.Xoshiro256ppGen),
+            ("Xoshiro512plus",       RDST.Xoshiro512p,      RDST.Xoshiro512pGen),
+            ("Xoshiro512starstar",   RDST.Xoshiro512ss,     RDST.Xoshiro512ssGen),
+        ]
+        for (shown_name, T, G) in allvariants
+            n = statewords(T)
+            x = T(fill(UInt64(0xdecafbad), n))
+            u = [rand(x) for _ in 1:10_000]
+            @test all(0.0 .<= u .< 1.0)
+            @test abs(sum(u) / length(u) - 0.5) < 0.02
+            @test rand(x, UInt64) isa UInt64
+            @test rand(x, Float32) isa Float32
+            v = [rand(x, Int64(1):Int64(100)) for _ in 1:1000]
+            @test all(1 .<= v .<= 100)
+
+            x = T(fill(UInt64(0xbeef), n))
+            w0 = RDST.next(x)
+            next_substream!(x)
+            w1 = RDST.next(x)
+            reset_substream!(x)
+            @test RDST.next(x) == w1
+            reset_stream!(x)
+            @test RDST.next(x) == w0
+            srand(x, fill(UInt64(0xbeef), n))
+            @test get_state(x) == fill(UInt64(0xbeef), n)
+
+            io = IOBuffer()
+            show(io, x)
+            @test occursin(shown_name, String(take!(io)))
+
+            gen = G(fill(UInt64(0xfeed), n))
+            r1 = next_stream(gen)
+            r2 = next_stream(gen)
+            s1 = Set([RDST.next(r1) for _ in 1:200])
+            s2 = Set([RDST.next(r2) for _ in 1:200])
+            @test isempty(intersect(s1, s2))
+            @test get_state(gen) != fill(UInt64(0xfeed), n)
+        end
+
+        @test_throws ArgumentError Xoroshiro128pGen(fill(UInt64(1), 3))
+        @test_throws ArgumentError Xoshiro512pGen(fill(UInt64(1), 4))
+    end
+
+    @testset "advance_state! (xoshiro families)" begin
+        seed256 = fill(UInt64(0x31), 4)
+
+        # fixed-distance jumps agree with short_jump from a fresh generator
+        for (T, e) in ((Xoroshiro128p, 64), (Xoshiro256ss, 128), (Xoshiro512p, 256))
+            n = statewords(T)
+            seed = fill(UInt64(0xabcdef), n)
+            a = T(seed); b = T(seed)
+            short_jump(a)
+            advance_state!(b, e, 0)
+            @test a.Cg == b.Cg
+        end
+
+        # small forward jumps match manual stepping
+        for k in (1, 2, 3, 17, 1000)
+            y = Xoshiro256p(seed256)
+            advance_state!(y, 0, k)
+            st = RDST._lin_step(Xoshiro256p(seed256).Cg)
+            for _ in 2:k
+                st = RDST._lin_step(st)
+            end
+            @test y.Cg == st
+        end
+
+        # round trip: +k then -k restores the exact position
+        for T in (Xoroshiro128pp, Xoshiro256p, Xoshiro512ss)
+            x = T(fill(UInt64(7), statewords(T)))
+            foreach(_ -> RDST.next(x), 1:13)
+            orig = x.Cg
+            advance_state!(x, 0, 12345)
+            @test x.Cg != orig
+            advance_state!(x, 0, -12345)
+            @test x.Cg == orig
+        end
+
+        # backward jump then re-draw reproduces earlier values
+        x = Xoshiro512pp(fill(UInt64(9), 8))
+        v1 = RDST.next(x)
+        RDST.next(x)
+        advance_state!(x, 0, -2)
+        @test RDST.next(x) == v1
+
+        # distance convention n = 2^e + c (e > 0), -2^-e + c (e < 0), c (e = 0)
+        x = Xoshiro256p(seed256); advance_state!(x, 0, 7); advance_state!(x, -1, -1)   # -3
+        z = Xoshiro256p(seed256); advance_state!(z, 0, 4)
+        @test x.Cg == z.Cg
+
+        a = Xoshiro256p(seed256); advance_state!(a, -2, 5)                             # +1
+        @test a.Cg == RDST._lin_step(Xoshiro256p(seed256).Cg)
+
+        # distances beyond the period are reduced modulo the period
+        x = Xoshiro256p(fill(UInt64(5), 4)); advance_state!(x, 1000, 0)
+        y = Xoshiro256p(fill(UInt64(5), 4)); advance_state!(y, 232, 0)
+        @test x.Cg == y.Cg
+
+        # boundaries are not moved by arbitrary jumps
+        r = Xoshiro256p(fill(UInt64(11), 4))
+        bg_before = r.Bg; ig_before = r.Ig
+        advance_state!(r, 10, 3)
+        @test r.Bg == bg_before && r.Ig == ig_before
+    end
+
+end

@@ -48,14 +48,17 @@ const InvA2 =  [          0   360363334  4225571728 ;
                           0           1           0 ]
 """
 Ensures a given seed is valid for MRG32k3a random number generator.
+Allocation-free.
 """
 function checkseed(x::Vector{Int})
-    return length(x) == 6     &&
-            all(x[1:6] .>= 0)  &&
-            all(x[1:3] .< m1)  &&
-            all(x[4:6] .< m2)  &&
-        ~all(x[1:3] .== 0)   &&
-        ~all(x[4:6] .== 0)
+    length(x) == 6 || return false
+    @inbounds for i in 1:6
+        x[i] >= 0 || return false
+        i <= 3 ? (x[i] < m1 || return false) : (x[i] < m2 || return false)
+    end
+    @inbounds (x[1] != 0 || x[2] != 0 || x[3] != 0) || return false
+    @inbounds (x[4] != 0 || x[5] != 0 || x[6] != 0) || return false
+    return true
 end
 
 """
@@ -79,12 +82,12 @@ end
 """
 Computes A*s % m, assuming abs(s[i]) < m. Overflow-safe.
 """
-function MatVecModM(A::Array{Int64,2},s::Array{Int64,1}, m::Int64)
+function MatVecModM(A::Array{Int64,2}, s::AbstractVector{Int64}, m::Int64)
 
-    v = [0,0,0]
+    v = [0, 0, 0]
     for i = 1:3
         for j = 1:3
-            v[i] = MultModM(A[i,j], s[j], v[i], m)
+            @inbounds v[i] = MultModM(A[i,j], s[j], v[i], m)
         end
     end
 
@@ -96,7 +99,7 @@ Computes matrix A*B % m, assuming abs(s[i]) < m. Overflow-safe.
 """
 function MatMatModM(A::Array{Int64,2}, B::Array{Int64,2}, m::Int64)
 
-    C = diagm([0,0,0])
+    C = zeros(Int64, 3, 3)
     for i = 1:3
         C[:,i] = MatVecModM(A,B[:,i],m)
     end
@@ -122,7 +125,7 @@ Computes the matrix  (A^n % m). Overflow-safe.
 """
 function MatPowModM(A::Array{Int64,2}, n::Int64, m::Int64)
     W = A
-    B = diagm([1,1,1])
+    B = [1 0 0; 0 1 0; 0 0 1]
 
     while n > 0
         if ( n % 2 == 1 )

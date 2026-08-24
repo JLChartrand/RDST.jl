@@ -1,5 +1,8 @@
 
 
+const DEFAULT_SEED = PMF.DEFAULT_SEED
+const checkseed = PMF.checkseed
+
 """
 `MRG32k3a()` will generate an instance of `MRG32k3a` with initial seeds `DEFAULT_SEED = [ 12345, 12345, 12345, 12345, 12345, 12345 ]`
 
@@ -11,7 +14,7 @@ mutable struct MRG32k3a <: AbstractStreamableRNG
     Cg::Vector{Int64}  # the current state of the RNG
     Bg::Vector{Int64}  # the start point of the current substream
     Ig::Vector{Int64}  # the start point of the current stream
-    function MRG32k3a(x::Vector{Int} = DEFAULT_SEED)
+    function MRG32k3a(x::Vector{Int} = PMF.DEFAULT_SEED)
         @assert(PMF.checkseed(x))
         new(copy(x),copy(x),copy(x))
     end
@@ -27,6 +30,30 @@ function copy(m::MRG32k3a)
     MRG32k3a(copy(m.Cg), copy(m.Bg), copy(m.Ig))
 end
 
+
+"""
+Advances the state of `rng` by one step and returns the raw pair `(p1, p2)`.
+Shared by all `rand` methods to avoid code duplication.
+"""
+@inline function next_pair!(rng::MRG32k3a)
+    Cg = rng.Cg
+    @inbounds begin
+        p1 = (PMF.a12 * Cg[2] + PMF.a13 * Cg[1]) % PMF.m1
+        p1 += p1 < 0 ? PMF.m1 : 0
+
+        Cg[1] = Cg[2]
+        Cg[2] = Cg[3]
+        Cg[3] = p1
+
+        p2 = (PMF.a21 * Cg[6] + PMF.a23 * Cg[4]) % PMF.m2
+        p2 += p2 < 0 ? PMF.m2 : 0
+
+        Cg[4] = Cg[5]
+        Cg[5] = Cg[6]
+        Cg[6] = p2
+    end
+    return p1, p2
+end
 
 """
 Resets a given random number generator to the beginning of the current stream.
@@ -48,10 +75,10 @@ end
 Takes a random number generator and shifts seed to next substream.
 """
 function next_substream!(rng::MRG32k3a)::MRG32k3a
-    rng.Bg[1:3] = PMF.MatVecModM(PMF.A1p76, rng.Bg[1:3], PMF.m1)
-    rng.Bg[4:6] = PMF.MatVecModM(PMF.A2p76, rng.Bg[4:6], PMF.m2)
+    rng.Bg[1:3] = PMF.MatVecModM(PMF.A1p76, view(rng.Bg, 1:3), PMF.m1)
+    rng.Bg[4:6] = PMF.MatVecModM(PMF.A2p76, view(rng.Bg, 4:6), PMF.m2)
     for i = 1:6
-        rng.Cg[i] = rng.Bg[i]
+        @inbounds rng.Cg[i] = rng.Bg[i]
     end
     return rng
 end
@@ -95,6 +122,6 @@ function advance_state!(rng::MRG32k3a, e::Int64, c::Int64)
         C2 = PMF.MatMatModM(B2, C2, PMF.m2)
     end
 
-    rng.Cg[1:3] = PMF.MatVecModM(C1, rng.Cg[1:3], PMF.m1)
-    rng.Cg[4:6] = PMF.MatVecModM(C2, rng.Cg[4:6], PMF.m2)
+    rng.Cg[1:3] = PMF.MatVecModM(C1, view(rng.Cg, 1:3), PMF.m1)
+    rng.Cg[4:6] = PMF.MatVecModM(C2, view(rng.Cg, 4:6), PMF.m2)
 end
