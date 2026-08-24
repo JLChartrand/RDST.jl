@@ -105,7 +105,7 @@ advance_state!(rng, e, c)    # jumps n steps where n = 2^e + c (c may be negativ
 ## Documentation
 
 Full documentation lives in [`docs/`](docs/) and as a PDF in
-[`docs/build/RDST.pdf`](docs/build/RDST.pdf):
+[`docs/RDST.pdf`](docs/build/RDST.pdf):
 
 - [Getting started](docs/src/getting_started.md)
 - [Streams & substreams](docs/src/streams.md)
