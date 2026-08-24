@@ -4,10 +4,6 @@ All names below are exported by the `RDST` module unless marked *(internal)*.
 
 ## Types
 
-```@docs-like
-AbstractRNGStream
-```
-
 **`AbstractRNGStream`** — supertype of stream *generators* (objects that mint
 new independent streams): `MRG32k3aGen`, `Xoshiro256plusGen`.
 

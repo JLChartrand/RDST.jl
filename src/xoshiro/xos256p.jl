@@ -170,6 +170,15 @@ _poly_to_ntuple(v::BitVector, ::Val{N}) where {N} =
 
 # Generic RNG type -----------------------------------------------------------------
 
+"""
+    LinRNG{N,S} <: AbstractStreamableRNG
+
+Generic xoshiro/xoroshiro generator: state of `N` 64-bit words and scrambler
+`S ∈ (:plus, :starstar, :plusplus)`. Holds three checkpoints — current state
+(`Cg`), substream start (`Bg`) and stream start (`Ig`) — enabling
+`reset_stream!`, `reset_substream!` and anchored jumps. Use the exported
+aliases (`Xoroshiro128p`, ..., `Xoshiro512pp`) instead.
+"""
 mutable struct LinRNG{N,S} <: AbstractStreamableRNG
     Cg::NTuple{N,UInt64}   # current state
     Bg::NTuple{N,UInt64}   # start point of the current substream
@@ -252,10 +261,36 @@ function srand(rng::LinRNG{N}, seed::Vector{UInt64}) where {N}
     return rng
 end
 
+"""
+    reset_stream!(rng) -> rng
+
+Rewind the generator to the very beginning of its current stream
+(`Cg = Bg = Ig`).
+"""
 reset_stream!(rng::LinRNG) = (rng.Cg = rng.Bg = rng.Ig; rng)
+
+"""
+    reset_substream!(rng) -> rng
+
+Rewind the generator to the beginning of its current substream (`Cg = Bg`).
+"""
 reset_substream!(rng::LinRNG) = (rng.Cg = rng.Bg; rng)
+
+"""
+    next_substream!(rng) -> rng
+
+Move the generator to the start of the next substream (anchored jump from
+`Bg`): 2^64 values for xoroshiro128, 2^128 for xoshiro256, 2^256 for
+xoshiro512.
+"""
 next_substream!(rng::LinRNG) = short_jump(rng)
 
+"""
+    get_state(rng::LinRNG) -> Vector{UInt64}
+
+Copy of the current state (`Cg`); restore it into a fresh generator via its
+three-argument constructor.
+"""
 get_state(rng::LinRNG) = collect(rng.Cg)
 
 Random.rng_native_52(::LinRNG) = UInt64
@@ -269,6 +304,13 @@ rand(rng::LinRNG) = next(rng) / (UInt64(0) - 1)
 
 # Generic stream generator ----------------------------------------------------------
 
+"""
+    LinGen{N,S} <: AbstractRNGStream
+
+Stream generator producing non-overlapping streams of `LinRNG{N,S}`: each call
+to `next_stream` applies the family's long jump to the stored seed. Use the
+exported aliases (`Xoroshiro128pGen`, ..., `Xoshiro512ppGen`) instead.
+"""
 mutable struct LinGen{N,S} <: AbstractRNGStream
     nextSeed::Vector{UInt64}
 
@@ -297,9 +339,19 @@ function show(io::IO, gen::LinGen{N,S}) where {N,S}
     print(io, "Seed for next ", _variant_name(LinRNG{N,S}), " generator:\n$(gen.nextSeed)")
 end
 
+"""
+    srand(gen, seed::Vector{UInt64}) -> gen
+
+Resets the seed that the next `next_stream` call will use.
+"""
 srand(gen::LinGen{N,S}, seed::Vector{UInt64}) where {N,S} =
     (gen.nextSeed .= seed[1:N]; gen)
 
+"""
+    get_state(gen) -> Vector{UInt64}
+
+Seed that will be used by the next `next_stream` call.
+"""
 get_state(gen::LinGen) = copy(gen.nextSeed)
 
 """
@@ -314,26 +366,154 @@ end
 # Concrete variants -------------------------------------------------------------------
 # `S` selects the scrambler: :plus (`+`), :starstar (`**`) or :plusplus (`++`).
 
+"""
+    Xoroshiro128p <: AbstractStreamableRNG
+
+xoroshiro128+ (Blackman & Vigna): 128-bit state, period 2^128 - 1, output
+`s0 + s1`. Fastest small-state generator for floating-point use; the four
+lower bits have low linear complexity and it has a very mild Hamming-weight
+dependency after ~5 TB of output. Suitable only for mild parallelism
+(2^32 streams x 2^64 substreams).
+"""
 const Xoroshiro128p   = LinRNG{2,:plus}
+
+"""
+    Xoroshiro128ss <: AbstractStreamableRNG
+
+xoroshiro128** (Blackman & Vigna): 128-bit state, period 2^128 - 1,
+all-purpose scrambler (`rotl(s1*5,7)*9`), 1-dimensionally equidistributed.
+Suitable only for mild parallelism (2^32 streams x 2^64 substreams).
+"""
 const Xoroshiro128ss  = LinRNG{2,:starstar}
+
+"""
+    Xoroshiro128pp <: AbstractStreamableRNG
+
+xoroshiro128++ (Blackman & Vigna): 128-bit state, period 2^128 - 1,
+all-purpose scrambler (`rotl(s0+s1,17)+s0`). Same parallelism limits as the
+other 128-bit variants.
+"""
 const Xoroshiro128pp  = LinRNG{2,:plusplus}
 
+"""
+    Xoshiro256p <: AbstractStreamableRNG
+
+xoshiro256+ (Blackman & Vigna): 256-bit state, period 2^256 - 1, output
+`s0 + s3`. Slightly faster than `**`/`++` when generating only floating-point
+numbers from the upper bits; avoid for raw 64-bit consumption.
+"""
 const Xoshiro256p     = LinRNG{4,:plus}
+
+"""
+    Xoshiro256ss <: AbstractStreamableRNG
+
+xoshiro256** (Blackman & Vigna): 256-bit state, period 2^256 - 1, all-purpose,
+3-dimensionally equidistributed (default PRNG of Lua and .NET 6).
+"""
 const Xoshiro256ss    = LinRNG{4,:starstar}
+
+"""
+    Xoshiro256pp <: AbstractStreamableRNG
+
+xoshiro256++ (Blackman & Vigna): 256-bit state, period 2^256 - 1, all-purpose,
+3-dimensionally equidistributed (default PRNG of Julia and Rust's SmallRng).
+The recommended general-purpose variant.
+"""
 const Xoshiro256pp    = LinRNG{4,:plusplus}
 
+"""
+    Xoshiro512p <: AbstractStreamableRNG
+
+xoshiro512+ (Blackman & Vigna): 512-bit state, period 2^512 - 1, output
+`s0 + s2`. Floating-point oriented; same caveats as `Xoshiro256p`.
+"""
 const Xoshiro512p     = LinRNG{8,:plus}
+
+"""
+    Xoshiro512ss <: AbstractStreamableRNG
+
+xoshiro512** (Blackman & Vigna): 512-bit state, period 2^512 - 1, all-purpose,
+7-dimensionally equidistributed.
+"""
 const Xoshiro512ss    = LinRNG{8,:starstar}
+
+"""
+    Xoshiro512pp <: AbstractStreamableRNG
+
+xoshiro512++ (Blackman & Vigna): 512-bit state, period 2^512 - 1, all-purpose.
+Offers 2^256 substreams of 2^256 values — more than any application needs;
+prefer `Xoshiro256pp` unless you have a specific reason.
+"""
 const Xoshiro512pp    = LinRNG{8,:plusplus}
 
+"""
+    Xoroshiro128pGen <: AbstractRNGStream
+
+Stream generator minting non-overlapping `Xoroshiro128p` streams via a
+long jump (2^96 values) per call. Seeds are 2 `UInt64` words.
+"""
 const Xoroshiro128pGen  = LinGen{2,:plus}
+
+"""
+    Xoroshiro128ssGen <: AbstractRNGStream
+
+Stream generator minting non-overlapping `Xoroshiro128ss` streams via a
+long jump (2^96 values) per call. Seeds are 2 `UInt64` words.
+"""
 const Xoroshiro128ssGen = LinGen{2,:starstar}
+
+"""
+    Xoroshiro128ppGen <: AbstractRNGStream
+
+Stream generator minting non-overlapping `Xoroshiro128pp` streams via a
+long jump (2^96 values) per call. Seeds are 2 `UInt64` words.
+"""
 const Xoroshiro128ppGen = LinGen{2,:plusplus}
 
+"""
+    Xoshiro256plusGen <: AbstractRNGStream
+
+Stream generator minting non-overlapping `Xoshiro256p` streams via a long
+jump (2^192 values) per call. Seeds are 4 `UInt64` words.
+"""
 const Xoshiro256plusGen = LinGen{4,:plus}
+
+"""
+    Xoshiro256ssGen <: AbstractRNGStream
+
+Stream generator minting non-overlapping `Xoshiro256ss` streams via a long
+jump (2^192 values) per call. Seeds are 4 `UInt64` words.
+"""
 const Xoshiro256ssGen   = LinGen{4,:starstar}
+
+"""
+    Xoshiro256ppGen <: AbstractRNGStream
+
+Stream generator minting non-overlapping `Xoshiro256pp` streams via a long
+jump (2^192 values) per call. Seeds are 4 `UInt64` words.
+"""
 const Xoshiro256ppGen   = LinGen{4,:plusplus}
 
+"""
+    Xoshiro512pGen <: AbstractRNGStream
+
+Stream generator minting non-overlapping `Xoshiro512p` streams via a long
+jump (2^384 values) per call. Seeds are 8 `UInt64` words.
+"""
 const Xoshiro512pGen    = LinGen{8,:plus}
+
+"""
+    Xoshiro512ssGen <: AbstractRNGStream
+
+Stream generator minting non-overlapping `Xoshiro512ss` streams via a long
+jump (2^384 values) per call. Seeds are 8 `UInt64` words.
+"""
 const Xoshiro512ssGen   = LinGen{8,:starstar}
+
+"""
+    Xoshiro512ppGen <: AbstractRNGStream
+
+Stream generator minting non-overlapping `Xoshiro512pp` streams via a long
+jump (2^384 values) per call. Seeds are 8 `UInt64` words.
+"""
 const Xoshiro512ppGen   = LinGen{8,:plusplus}
