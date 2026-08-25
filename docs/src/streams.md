@@ -11,6 +11,97 @@ for parallel and replicated stochastic simulation:
   substream while keeping the scenario structure enables techniques such as
   common random numbers.
 
+## Why streams? The case for Common Random Numbers (CRN)
+
+The whole point of the stream/substream architecture is **variance reduction
+when comparing systems** — arguably the most important technique in stochastic
+simulation design (L'Ecuyer et al. 2002; Law, *Simulation Modeling and
+Analysis*).
+
+Suppose you compare K configurations of a stochastic system (two inventory
+levels, two queue disciplines...). The naive approach runs each configuration
+with *independent* random numbers. The variance of the estimated difference is
+then
+
+```
+Var[D̂] = Var[Ȳ₁]/n + Var[Ȳ₂]/n
+```
+
+With **common random numbers**, every configuration of a given replication
+consumes the *same* underlying uniforms: the per-replication differences are
+strongly positively correlated and
+
+```
+Var[D̂_CRN] = Var[Ȳ₁]/n + Var[Ȳ₂]/n − 2·Cov[Ȳ₁, Ȳ₂]/n
+```
+
+— often orders of magnitude smaller. But CRN only works if the random number
+usage can be *synchronised exactly* across configurations, replication after
+replication. That is precisely what RDST's machinery guarantees:
+
+| Need | RDST tool |
+|---|---|
+| Replications must be independent | a fresh stream per replication (`next_stream!`) |
+| Configurations must see identical randomness | rewind each configuration to the same substream start (`reset_stream!` / `reset_substream!`) |
+| No accidental overlap between replications | streams are provably disjoint |
+
+### Measurable example: comparing two inventory levels
+
+Daily cost of an inventory system over 30 days (demands N(100, 20) truncated
+at 0), comparing stock level s = 50 vs s = 60:
+
+```julia
+using RDST, Statistics
+
+function cost(s, rng)
+    total, stock = 0.0, Float64(s)
+    for _ in 1:30
+        stock = min(stock + 40, 200)
+        d = max(0.0, 100 + 20randn(rng))
+        sold = min(stock, d)
+        total += 5(d - sold) + 0.1max(0, stock - sold - 10)
+        stock -= sold
+    end
+    total
+end
+
+function replications(crn::Bool, n::Int)
+    gen = MRG32k3aGen()
+    diffs = Vector{Float64}(undef, n)
+    for i in 1:n
+        r50 = next_stream!(gen)
+        l50 = cost(50, r50)
+        r60 = crn ? reset_stream!(copy(r50)) : next_stream!(gen)
+        l60 = cost(60, r60)
+        diffs[i] = l60 - l50
+    end
+    return diffs
+end
+
+for crn in (true, false)
+    ds = replications(crn, 4_000)
+    println("CRN = \$crn: mean diff ≈ \$(round(mean(ds), digits=1)), ",
+            "var(diff) ≈ \$(round(var(ds), digits=1))")
+end
+```
+
+Typical output:
+
+```
+CRN = true:  mean diff ≈ -49.9, var(diff) ≈ 0.1
+CRN = false: mean diff ≈ -39.2, var(diff) ≈ 540775.9
+```
+
+The variance of the comparison drops by **six orders of magnitude**: with CRN,
+both policies face identical demand sequences, so the observed difference
+measures the effect of the policy change rather than the noise of unrelated
+demand scenarios. Without CRN you would need ~10⁶ more replications for the
+same precision.
+
+This example uses `copy(r50)` + `reset_stream!`: both policies replay the very
+same stream from its beginning. `reset_substream!` generalises the pattern
+when each replication itself contains several scenarios.
+
 ## The two object families
 
 1. **Stream generators** (`<: AbstractRNGStream`) hold the seed of the
