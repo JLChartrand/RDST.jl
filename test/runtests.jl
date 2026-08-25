@@ -432,6 +432,60 @@ statewords(::Type{RDST.LinRNG{N,S}}) where {N,S} = N
         @test r.Bg == bg_before && r.Ig == ig_before
     end
 
+    @testset "Random API parity" begin
+        # drop-in substitutability with the standard library's Xoshiro:
+        # every operation below must work for every RDST generator.
+        mk = [
+            () -> MRG32k3a([42, 1, 2, 3, 4, 5]),
+            () -> Xoshiro256pp(fill(UInt64(42), 4)),
+            () -> Xoroshiro128ss(fill(UInt64(42), 2)),
+            () -> Xoshiro512p(fill(UInt64(42), 8)),
+        ]
+        for mkm in mk
+            r = mkm()
+            @test rand(r) isa Float64
+            @test rand(r, Bool) isa Bool
+            for T in (Int, UInt8, UInt64, Int128, Char)
+                v = rand(r, T)
+                @test v isa T
+            end
+            @test all(1 .<= rand(r, 1:10) .<= 10)
+            v = rand(r, 5); @test length(v) == 5
+            @test size(rand(r, Int, 2, 2)) == (2, 2)
+            d = Vector{Float64}(undef, 4); rand!(r, d); @test all(0 .<= d .< 1)
+            n = randn(r); @test n isa Float64
+            e = randexp(r); @test e >= 0
+            @test sort(shuffle(r, collect(1:8))) == collect(1:8)
+            p = randperm(r, 6); @test sort(p) == collect(1:6)
+            @test Random.randstring(r, 5) |> length == 5
+        end
+
+        # seed! reproducibility: same seed -> identical sequence
+        for (mka, seed) in (
+            (() -> MRG32k3a(), 12345),
+            (() -> Xoshiro256pp(fill(UInt64(0), 4)), 6789),
+        )
+            r1 = mka(); r2 = mka()
+            Random.seed!(r1, seed); Random.seed!(r2, seed)
+            a1 = [rand(r1) for _ in 1:20]
+            a2 = [rand(r2) for _ in 1:20]
+            @test a1 == a2
+        end
+
+        # seed! accepts vectors and validates them
+        r = MRG32k3a()
+        Random.seed!(r, [7, 7, 7, 8, 8, 8]); @test r.Cg == [7, 7, 7, 8, 8, 8]
+        @test_throws ArgumentError Random.seed!(r, [0, 0, 0, 1, 1, 1])
+        x = Xoshiro256p(fill(UInt64(0), 4))
+        Random.seed!(x, UInt64[1, 2, 3, 4]); @test get_state(x) == UInt64[1, 2, 3, 4]
+
+        # streams still work through the generic API
+        gen = Xoshiro256plusGen(UInt64[1, 2, 3, 4])
+        s1 = next_stream!(gen); s2 = next_stream!(gen)
+        @test !isempty(intersect([rand(s1) for _ in 1:100], [rand(s2) for _ in 1:100])) ==
+              false
+    end
+
     @testset "deprecated names" begin
         seed = fill(UInt64(0x77), 4)
         a = Xoshiro256p(seed)

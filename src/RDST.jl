@@ -24,6 +24,9 @@ include("mrg32k3a/main.jl")
 include("xoshiro/xos256p.jl")
 include("xoshiro/xoshiro256plus_types.jl")
 
+###standard Random.seed! interface for every generator
+include("seeding.jl")
+
 export Xoroshiro128p, Xoroshiro128ss, Xoroshiro128pp,
        Xoshiro256p, Xoshiro256ss, Xoshiro256pp,
        Xoshiro512p, Xoshiro512ss, Xoshiro512pp,

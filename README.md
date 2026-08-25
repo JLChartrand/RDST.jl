@@ -27,9 +27,10 @@ See the [documentation](docs/) for a detailed comparison with MRG32k3a.
 - **Full state control**: save/restore a generator with `get_state`,
   rewind with `reset_stream!`, and jump to any position — forward *or
   backward* — with `advance_state!(rng, e, c)` on **every** generator.
-- **Standard `Random` API integration**: works with `Random.Sampler` machinery;
-  floats, integers, `Bool` and range sampling are supported (details per
-  generator in the docs).
+- **Standard `Random` API integration**: full drop-in substitutability with
+  Julia's built-in RNGs — `rand`/`rand!` on scalars, arrays and ranges,
+  `randn`, `randexp`, `shuffle`, `randperm`, `randsubseq`, `Random.seed!(rng,
+  seed)` all work with every generator (details per generator in the docs).
 - **Zero-allocation hot paths**: all generators produce numbers without heap
   allocation.
 

@@ -89,6 +89,21 @@ Seeds are validated by `checkseed`: a valid MRG32k3a seed has 6 non-negative
 values; the first three must be < m1 and not all zero, the last three < m2 and
 not all zero.
 
+The standard Julia interface also works with every generator:
+
+```julia
+Random.seed!(rng, 42)          # integer seed (splitmix64 expansion)
+Random.seed!(rng, [7,7,7,8,8,8])   # explicit MRG32k3a seed (validated)
+```
+
+## Full Random API
+
+RDST generators are drop-in substitutes for Julia's built-in RNGs: scalars
+(all numeric types, `Bool`, `Char`), arrays (`rand(rng, n)`, `rand(rng, T,
+dims...)`, `rand!`), ranges, `randn`, `randexp`, `shuffle`, `randperm`,
+`randsubseq` and `Random.randstring` all work. Only `sample` requires
+StatsBase.jl and is out of scope.
+
 ## Next steps
 
 - [Streams & substreams](streams.md)

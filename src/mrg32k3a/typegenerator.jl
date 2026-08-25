@@ -33,5 +33,21 @@ Produces a raw random number with 32 bits of precision.
     return p1 > p2 ? (p1 - p2) * PMF.norm : (p1 + PMF.m1 - p2) * PMF.norm
 end
 
+rand(rng::MRG32k3a, ::Type{Float64}) = rand(rng)
+
+"""
+Hook required by Random's generic machinery for Float64-native generators:
+produces a Float64 in [1, 2). Everything else (ints, arrays, shuffle...)
+derives from this without further plumbing.
+"""
+rand(rng::MRG32k3a, ::Random.SamplerTrivial{Random.CloseOpen12_64}) = 1.0 + rand(rng)
+
+# Full-width 64-bit channel assembled from two [1,2) draws (each carries 52
+# random bits); enables BigFloat and anything else requiring has_fast_64.
+Random.has_fast_64(::MRG32k3a) = true
+rand(rng::MRG32k3a, ::Random.SamplerType{UInt64}) =
+    (reinterpret(UInt64, rand(rng, Random.CloseOpen12_64())) << 12) ⊻
+    (reinterpret(UInt64, rand(rng, Random.CloseOpen12_64())) >>> 40)
+
 # MRG32k3a produces natively Float64
 Random.rng_native_52(::MRG32k3a) = Float64
