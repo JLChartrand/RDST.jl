@@ -98,11 +98,37 @@ Random.seed!(rng, [7,7,7,8,8,8])   # explicit MRG32k3a seed (validated)
 
 ## Full Random API
 
-RDST generators are drop-in substitutes for Julia's built-in RNGs: scalars
-(all numeric types, `Bool`, `Char`), arrays (`rand(rng, n)`, `rand(rng, T,
-dims...)`, `rand!`), ranges, `randn`, `randexp`, `shuffle`, `randperm`,
-`randsubseq` and `Random.randstring` all work. Only `sample` requires
-StatsBase.jl and is out of scope.
+RDST generators are drop-in substitutes for Julia's built-in RNGs: anywhere a
+function accepts an `AbstractRNG`, you can pass an RDST generator and keep
+your stream/substream control.
+
+```julia
+using RDST, Random
+
+rng = next_stream!(MRG32k3aGen())     # any RDST generator works here
+
+rand(rng, 5)                          # Vector{Float64}, 5 draws
+A = rand(rng, Float64, 2, 3)          # 2x3 matrix
+z = randn(rng)                        # standard normal
+e = randexp(rng)                      # exponential
+v = shuffle(rng, collect(1:8))        # shuffled copy
+p = randperm(rng, 6)                  # random permutation
+buf = Vector{Float64}(undef, 3)
+rand!(rng, buf)                       # fill in place
+Random.randstring(rng, 10)            # random string
+```
+
+Seeding through the standard interface makes results reproducible:
+
+```julia
+Random.seed!(rng, 42)
+u1 = [rand(rng) for _ in 1:3]
+Random.seed!(rng, 42)
+u2 = [rand(rng) for _ in 1:3]
+u1 == u2                              # true
+```
+
+Only `sample` requires StatsBase.jl and is out of scope.
 
 ## Next steps
 

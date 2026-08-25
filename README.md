@@ -75,8 +75,8 @@ rand(rng, 1:100)             # uniformly distributed Int64 in the range
 
 ```julia
 gen  = MRG32k3aGen()
-rng1 = next_stream!(gen)      # stream 1
-rng2 = next_stream!(gen)      # stream 2 — provably non-overlapping with stream 1
+rng1 = next_stream!(gen)     # stream 1
+rng2 = next_stream!(gen)     # stream 2 — provably non-overlapping with stream 1
 
 # Substreams inside rng1
 u0 = rand(rng1)
@@ -84,6 +84,23 @@ next_substream!(rng1)        # move to the next substream
 reset_substream!(rng1)       # back to the start of the current substream
 reset_stream!(rng1)          # back to the very beginning of the stream
 @assert rand(rng1) == u0
+```
+
+### Drop-in use with Julia's standard RNG API
+
+```julia
+using RDST, Random
+
+rng = next_stream!(MRG32k3aGen())   # any RDST generator works as an AbstractRNG
+
+rand(rng, 5)                        # Vector{Float64}
+A = rand(rng, Float64, 2, 3)        # matrix
+z = randn(rng)                      # standard normal
+v = shuffle(rng, collect(1:8))
+p = randperm(rng, 6)
+buf = zeros(3); rand!(rng, buf)
+
+Random.seed!(rng, 42)               # standard seeding, reproducible runs
 ```
 
 ### Saving and restoring state
