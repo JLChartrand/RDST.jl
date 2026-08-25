@@ -23,7 +23,7 @@ get_state(rng_gen::MRG32k3aGen) = copy(rng_gen.seed)
 """
 Given an RNG generator object, returns the next RNG stream.
 """
-function next_stream(rng_gen::MRG32k3aGen)
+function next_stream!(rng_gen::MRG32k3aGen)
     rng = MRG32k3a(copy(rng_gen.seed))
 
     rng_gen.seed[1:3] = PMF.MatVecModM(PMF.A1p127, view(rng_gen.seed, 1:3), PMF.m1)
@@ -31,3 +31,5 @@ function next_stream(rng_gen::MRG32k3aGen)
 
     return rng
 end
+# Deprecated pre-1.0 name (mutates its argument despite lacking `!`).
+@deprecate next_stream(rng_gen::MRG32k3aGen) next_stream!(rng_gen)

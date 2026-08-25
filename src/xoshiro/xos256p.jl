@@ -208,7 +208,7 @@ end
 Jumps forward by 2^96 values (xoroshiro128), 2^128 (xoshiro256) or 2^256
 (xoshiro512): the start of the next non-overlapping substream.
 """
-function short_jump(rng::LinRNG{N}) where {N}
+function short_jump!(rng::LinRNG{N}) where {N}
     rng.Cg = rng.Bg = _jump(_short_jump_consts(Val(N)), rng.Bg)
     return rng
 end
@@ -217,10 +217,16 @@ end
 Jumps forward by 2^96 (xoroshiro128), 2^192 (xoshiro256) or 2^384 (xoshiro512)
 values: the start of the next independent stream.
 """
-function long_jump(rng::LinRNG{N}) where {N}
+function long_jump!(rng::LinRNG{N}) where {N}
     rng.Cg = rng.Bg = rng.Ig = _jump(_long_jump_consts(Val(N)), rng.Ig)
     return rng
 end
+
+# Deprecated pre-1.0 names (they mutate their argument despite lacking `!`).
+
+@deprecate short_jump(rng::LinRNG) short_jump!(rng)
+@deprecate long_jump(rng::LinRNG) long_jump!(rng)
+@deprecate srand(rng::LinRNG, seed::Vector{UInt64}) srand!(rng, seed)
 
 """
 Given a random number generator, jumps n steps forward if n > 0
@@ -255,7 +261,7 @@ end
 """
 Seeds a generator with the first words of `seed`.
 """
-function srand(rng::LinRNG{N}, seed::Vector{UInt64}) where {N}
+function srand!(rng::LinRNG{N}, seed::Vector{UInt64}) where {N}
     s = NTuple{N,UInt64}(seed)
     rng.Cg = rng.Bg = rng.Ig = s
     return rng
@@ -283,7 +289,7 @@ Move the generator to the start of the next substream (anchored jump from
 `Bg`): 2^64 values for xoroshiro128, 2^128 for xoshiro256, 2^256 for
 xoshiro512.
 """
-next_substream!(rng::LinRNG) = short_jump(rng)
+next_substream!(rng::LinRNG) = short_jump!(rng)
 
 """
     get_state(rng::LinRNG) -> Vector{UInt64}
@@ -308,7 +314,7 @@ rand(rng::LinRNG) = next(rng) / (UInt64(0) - 1)
     LinGen{N,S} <: AbstractRNGStream
 
 Stream generator producing non-overlapping streams of `LinRNG{N,S}`: each call
-to `next_stream` applies the family's long jump to the stored seed. Use the
+to `next_stream!` applies the family's long jump to the stored seed. Use the
 exported aliases (`Xoroshiro128pGen`, ..., `Xoshiro512ppGen`) instead.
 """
 mutable struct LinGen{N,S} <: AbstractRNGStream
@@ -340,24 +346,24 @@ function show(io::IO, gen::LinGen{N,S}) where {N,S}
 end
 
 """
-    srand(gen, seed::Vector{UInt64}) -> gen
+    srand!(gen, seed::Vector{UInt64}) -> gen
 
-Resets the seed that the next `next_stream` call will use.
+Resets the seed that the next `next_stream!` call will use.
 """
-srand(gen::LinGen{N,S}, seed::Vector{UInt64}) where {N,S} =
+srand!(gen::LinGen{N,S}, seed::Vector{UInt64}) where {N,S} =
     (gen.nextSeed .= seed[1:N]; gen)
 
 """
     get_state(gen) -> Vector{UInt64}
 
-Seed that will be used by the next `next_stream` call.
+Seed that will be used by the next `next_stream!` call.
 """
 get_state(gen::LinGen) = copy(gen.nextSeed)
 
 """
 Given an RNG generator object, returns the next RNG stream.
 """
-function next_stream(gen::LinGen{N,S}) where {N,S}
+function next_stream!(gen::LinGen{N,S}) where {N,S}
     seed = NTuple{N,UInt64}(gen.nextSeed)
     gen.nextSeed .= collect(_jump(_long_jump_consts(Val(N)), seed))
     return LinRNG{N,S}(seed)
@@ -517,3 +523,5 @@ Stream generator minting non-overlapping `Xoshiro512pp` streams via a long
 jump (2^384 values) per call. Seeds are 8 `UInt64` words.
 """
 const Xoshiro512ppGen   = LinGen{8,:plusplus}
+
+@deprecate srand(gen::LinGen, seed::Vector{UInt64}) srand!(gen, seed)

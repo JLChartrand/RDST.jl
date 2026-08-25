@@ -21,7 +21,7 @@ See the [documentation](docs/) for a detailed comparison with MRG32k3a.
 ## Features
 
 - **Multiple independent streams**: obtain guaranteed non-overlapping sequences
-  with `next_stream(gen)` — ideal for parallel workers or replicated experiments.
+  with `next_stream!(gen)` — ideal for parallel workers or replicated experiments.
 - **Substreams** within each stream (`reset_substream!`, `next_substream!`),
   enabling common random numbers across scenarios — for *every* generator.
 - **Full state control**: save/restore a generator with `get_state`,
@@ -50,7 +50,7 @@ Requires Julia ≥ 1.6. The only dependency is the Julia standard library `Rando
 using RDST
 
 gen = MRG32k3aGen()          # stream generator (manages non-overlapping seeds)
-rng = next_stream(gen)       # a fresh, independent stream
+rng = next_stream!(gen)       # a fresh, independent stream
 
 rand(rng)                    # Float64 in [0, 1)
 rand(rng, UInt64)            # raw 64-bit unsigned integer
@@ -64,7 +64,7 @@ rand(rng, 1:10)              # not yet implemented for MRG32k3a; use Xoshiro256p
 using RDST
 
 gen = Xoshiro256plusGen([0x01, 0x02, 0x03, 0x04])
-rng = next_stream(gen)
+rng = next_stream!(gen)
 
 rand(rng)                    # Float64 in [0, 1)
 rand(rng, 1:100)             # uniformly distributed Int64 in the range
@@ -74,8 +74,8 @@ rand(rng, 1:100)             # uniformly distributed Int64 in the range
 
 ```julia
 gen  = MRG32k3aGen()
-rng1 = next_stream(gen)      # stream 1
-rng2 = next_stream(gen)      # stream 2 — provably non-overlapping with stream 1
+rng1 = next_stream!(gen)      # stream 1
+rng2 = next_stream!(gen)      # stream 2 — provably non-overlapping with stream 1
 
 # Substreams inside rng1
 u0 = rand(rng1)
@@ -88,7 +88,7 @@ reset_stream!(rng1)          # back to the very beginning of the stream
 ### Saving and restoring state
 
 ```julia
-rng = next_stream(MRG32k3aGen())
+rng = next_stream!(MRG32k3aGen())
 state = get_state(rng)               # copy of the current state
 xs = [rand(rng) for _ in 1:5]
 rng2 = MRG32k3a(state, state, state) # restore into a new generator

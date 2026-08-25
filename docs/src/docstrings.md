@@ -55,12 +55,12 @@ rand(::RDST.LinRNG)
 rand(::RDST.LinRNG, ::Type{Float32})
 rand(::RDST.LinRNG, ::Type{Float16})
 rand(::RDST.LinRNG, ::UnitRange{Int64})
-short_jump
-long_jump
+short_jump!
+long_jump!
 advance_state!
-srand
+srand!
 get_state
-next_stream
+next_stream!
 reset_stream!
 reset_substream!
 next_substream!

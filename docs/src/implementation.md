@@ -32,7 +32,7 @@ precomputed matrix power applied to the state vector:
 
 | Operation | Matrix | Step |
 |---|---|---|
-| `next_stream(gen)` | `A1p127`, `A2p127` | 2^127 values |
+| `next_stream!(gen)` | `A1p127`, `A2p127` | 2^127 values |
 | `next_substream!(rng)` | `A1p76`, `A2p76` | 2^76 values |
 | `advance_state!(rng, e, c)` | `MatTwoPowModM` / `InvA1`, `InvA2` | arbitrary (inverse matrices allow backward jumps) |
 
@@ -58,16 +58,16 @@ output have limited linear complexity — irrelevant once scaled to `Float64`
 
 ### Jumps
 
-`short_jump` and `long_jump` use Vigna's published jump polynomials. They are
+`short_jump!` and `long_jump!` use Vigna's published jump polynomials. They are
 computed as XOR-linear combinations of states visited while stepping through
 the 256 bits of each jump constant. RDST.jl hoists the jump constants into
 compile-time tuples and evaluates jumps allocation-free on immutable state
 tuples.
 
 RDST semantics differ subtly from the reference C code: jumps are **anchored**
-at stream boundaries. `short_jump(rng)` first resets `Cg ← Bg`, then applies
+at stream boundaries. `short_jump!(rng)` first resets `Cg ← Bg`, then applies
 the jump polynomial, and stores the result in both `Cg` and `Bg`;
-`long_jump(rng)` does the same with respect to `Ig`. This matches L'Ecuyer's
+`long_jump!(rng)` does the same with respect to `Ig`. This matches L'Ecuyer's
 stream model (`next_substream!`/`reset_stream!`) and makes scenario replay
 reproducible regardless of consumption inside the current substream.
 
@@ -100,7 +100,7 @@ Backward distances use the multiplicative order of x: `x^(-n) = x^(2^deg-1-n)`
 (`_poly_mul_mod`, `_poly_pow_x`, BigInt exponents reduced modulo the period)
 and exposes it as `advance_state!(rng, e, c)` with the exact distance
 convention of MRG32k3a. Correctness is property-tested: fixed jumps coincide
-with `short_jump`, round trips (+k then -k) restore the state bit-for-bit,
+with `short_jump!`, round trips (+k then -k) restore the state bit-for-bit,
 and backward-jumped generators re-emit previously seen values.
 
 ### State representation
@@ -135,4 +135,4 @@ Single core, Julia 1.12 (indicative):
 | `rand(::Xoroshiro128p)` | ≈ 1200 × 10⁶/s |
 | `rand(::Xoshiro256p/ss/pp)` | ≈ 1340 × 10⁶/s |
 | `rand(::Xoshiro512p/ss/pp)` | ≈ 1150 × 10⁶/s |
-| `short_jump` / `long_jump` | 0 allocations |
+| `short_jump!` / `long_jump!` | 0 allocations |

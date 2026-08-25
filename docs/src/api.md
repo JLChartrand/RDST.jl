@@ -67,8 +67,8 @@ Independent deep copy of the generator (all three state vectors).
 | Signature | Description |
 |---|---|
 | `MRG32k3aGen()`, `MRG32k3aGen(seed)` | create a stream generator |
-| `next_stream(gen) -> MRG32k3a` | return a new stream; internal seed leaps 2^127 values ahead |
-| `get_state(gen) -> Vector{Int}` | seed that will be used by the next `next_stream` call |
+| `next_stream!(gen) -> MRG32k3a` | return a new stream; internal seed leaps 2^127 values ahead |
+| `get_state(gen) -> Vector{Int}` | seed that will be used by the next `next_stream!` call |
 
 ---
 
@@ -90,18 +90,18 @@ Uniform in [0, 1), built from a full 64-bit draw.
 Supported `T`: `Float64`, `Float32`, `Float16`, `UInt64`, and
 `UnitRange{Int64}` (uniform, unbiased modulo sampling).
 
-**`srand(rng, seed::Vector{UInt64}) -> rng`**
+**`srand!(rng, seed::Vector{UInt64}) -> rng`**
 Re-seed an existing generator (first 4 words are used).
 
 **`reset_stream!(rng) -> rng`**, **`reset_substream!(rng) -> rng`**,
 **`next_substream!(rng) -> rng`**
-Same semantics as for MRG32k3a; `next_substream!` performs a `short_jump`
+Same semantics as for MRG32k3a; `next_substream!` performs a `short_jump!`
 (leap of ≈ 2^96 values).
 
-**`short_jump(rng) -> rng`**
+**`short_jump!(rng) -> rng`**
 Jump to the beginning of the next 2^96-value block (Vigna's short jump).
 
-**`long_jump(rng) -> rng`**
+**`long_jump!(rng) -> rng`**
 Leap ≈ 2^192 values ahead — used to delimit streams.
 
 **`get_state(rng) -> Vector{UInt64}`**
@@ -118,9 +118,9 @@ Independent copy.
 | Signature | Description |
 |---|---|
 | `Xoshiro256plusGen(seed::Vector{UInt64})` | create a stream generator (seed must have exactly 4 words) |
-| `next_stream(gen) -> Xoshiro256p` | new independent stream (`long_jump` from the stored seed) |
-| `srand(gen, seed::Vector{UInt64}) -> gen` | reset the stored seed |
-| `get_state(gen) -> Vector{UInt64}` | seed that will be used by the next `next_stream` call |
+| `next_stream!(gen) -> Xoshiro256p` | new independent stream (`long_jump!` from the stored seed) |
+| `srand!(gen, seed::Vector{UInt64}) -> gen` | reset the stored seed |
+| `get_state(gen) -> Vector{UInt64}` | seed that will be used by the next `next_stream!` call |
 
 ---
 
@@ -138,8 +138,8 @@ above. Exported types:
 
 Constructors accept an `NTuple{N,UInt64}` or a `Vector{<:Unsigned}` of length
 `N` (1 or 3 arguments). Available functions: `rand` (Float64/Float32/Float16,
-UInt64, ranges), `srand`, `reset_stream!`, `reset_substream!`,
-`next_substream!`, `short_jump`, `long_jump`, `get_state`, `copy`.
+UInt64, ranges), `srand!`, `reset_stream!`, `reset_substream!`,
+`next_substream!`, `short_jump!`, `long_jump!`, `get_state`, `copy`.
 
 **`advance_state!(rng, e::Integer, c::Integer) -> rng`**
 Jump forward by `n` steps (`n = 2^e + c` if `e > 0`, `n = -2^(-e) + c` if
@@ -148,17 +148,17 @@ the jump polynomial `x^n mod p(x)` over GF(2) (p = the family's characteristic
 polynomial) and applying it to the current state; distances are reduced
 modulo the period. Only `Cg` moves — stream/substream boundaries are kept.
 Cost is O((64N)²) GF(2) operations (≈ 10–500 ms depending on family); for the
-standard distances prefer `short_jump`/`long_jump`, which use precomputed
+standard distances prefer `short_jump!`/`long_jump!`, which use precomputed
 constants and are allocation-free.
 
 Jump semantics (all xoshiro-family generators):
 
-- `short_jump(rng)` — jump anchored at the current **substream start** (`Bg`);
+- `short_jump!(rng)` — jump anchored at the current **substream start** (`Bg`);
   lands at the next substream boundary (2^64 values for xoroshiro128, 2^128
   for xoshiro256, 2^256 for xoshiro512).
-- `long_jump(rng)` — jump anchored at the **stream start** (`Ig`); delimits
+- `long_jump!(rng)` — jump anchored at the **stream start** (`Ig`); delimits
   independent streams.
-- `next_stream(gen)` applies the long-jump polynomial to the stored seed.
+- `next_stream!(gen)` applies the long-jump polynomial to the stored seed.
 
 All jump constants are the official ones from
 [xoshiro.di.unimi.it](http://xoshiro.di.unimi.it) and outputs are validated
@@ -177,6 +177,6 @@ byte-for-byte against the original C implementations.
 | `reset_substream!` | yes | yes |
 | `next_substream!` | yes | yes |
 | `advance_state!` | yes | — |
-| `srand` | — | yes |
+| `srand!` | — | yes |
 | `get_state` | yes | yes |
-| `next_stream` (via Gen) | yes | yes |
+| `next_stream!` (via Gen) | yes | yes |

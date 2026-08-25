@@ -11,8 +11,8 @@ helps you choose.
 | Period | ≈ 2^191 | 2^128 − 1 | 2^256 − 1 | 2^512 − 1 |
 | Native output | `Float64` [0,1), ~32-bit resolution | `UInt64` | `UInt64` | `UInt64` |
 | Throughput (this package, single core) | ≈ 200 M/s | ≈ 1200 M/s | ≈ 1340 M/s | ≈ 1150 M/s |
-| Stream mechanism | matrix power A^2^127 on the seed | `long_jump` polynomial (2^96) | `long_jump` (2^192) | `long_jump` (2^384) |
-| Substream mechanism | matrix power A^2^76 | `short_jump` (2^64) | `short_jump` (2^128) | `short_jump` (2^256) |
+| Stream mechanism | matrix power A^2^127 on the seed | `long_jump!` polynomial (2^96) | `long_jump!` (2^192) | `long_jump!` (2^384) |
+| Substream mechanism | matrix power A^2^76 | `short_jump!` (2^64) | `short_jump!` (2^128) | `short_jump!` (2^256) |
 | Backward jumps | yes (`advance_state!`) | yes (`advance_state!`, GF(2) polynomials) | yes (`advance_state!`) | yes (`advance_state!`) |
 | Arbitrary-jump cost | O(e) matrix products | O(deg²) GF(2) ops (~10–500 ms) | same | same |
 | Equidistribution | well analysed theory | 1-dim (**/++) / 0-dim (+) | 3-dim (**/++) / 2-dim (+) | 7-dim (**/++) / 6-dim (+) |

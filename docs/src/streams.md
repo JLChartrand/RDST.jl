@@ -29,13 +29,13 @@ using RDST
 
 gen = MRG32k3aGen()             # or Xoshiro256plusGen(UInt64[...])
 
-worker1 = next_stream(gen)       # stream 1
-worker2 = next_stream(gen)       # stream 2 — guaranteed disjoint from stream 1
-worker3 = next_stream(gen)       # stream 3 — ...
+worker1 = next_stream!(gen)       # stream 1
+worker2 = next_stream!(gen)       # stream 2 — guaranteed disjoint from stream 1
+worker3 = next_stream!(gen)       # stream 3 — ...
 ```
 
-Each call to `next_stream` advances the generator's internal seed by a huge
-leap (2^127 values for MRG32k3a, a full `long_jump` for Xoshiro256+), which is
+Each call to `next_stream!` advances the generator's internal seed by a huge
+leap (2^127 values for MRG32k3a, a full `long_jump!` for Xoshiro256+), which is
 what guarantees non-overlap.
 
 ```julia
@@ -43,7 +43,7 @@ what guarantees non-overlap.
 using Distributed
 gen = MRG32k3aGen()
 @distributed (+) for _ in 1:nworkers()
-    rng = next_stream(gen)      # note: ship seeds explicitly in real code,
+    rng = next_stream!(gen)      # note: ship seeds explicitly in real code,
     sum(rand(rng) for _ in 1:10^6)
 end
 ```
@@ -62,7 +62,7 @@ hierarchy (all return the modified RNG):
 Example — common random numbers across two scenarios:
 
 ```julia
-rng = next_stream(MRG32k3aGen())
+rng = next_stream!(MRG32k3aGen())
 
 rand(rng)                 # consume some variates of substream 1...
 rand(rng)
@@ -74,7 +74,7 @@ reset_stream!(rng)        # replay substream 1 from scratch for scenario A
 uA = rand(rng)            # same underlying uniforms as the first draw
 ```
 
-For Xoshiro256+, `next_substream!` is implemented as a `short_jump`
+For Xoshiro256+, `next_substream!` is implemented as a `short_jump!`
 (2^96-value leap) and `reset_stream!`/`next_substream!` manipulate the saved
 `Bg`/`Ig` checkpoints.
 
@@ -107,7 +107,7 @@ independent of the distance jumped.
 
 ## Guarantees
 
-- Streams produced by successive calls to `next_stream` on the same generator
+- Streams produced by successive calls to `next_stream!` on the same generator
   object are **provably non-overlapping**.
 - Substreams likewise partition a stream into disjoint blocks
   (length ≈ 2^76 steps for MRG32k3a).

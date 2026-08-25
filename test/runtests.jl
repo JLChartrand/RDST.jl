@@ -38,7 +38,7 @@ statewords(::Type{RDST.LinRNG{N,S}}) where {N,S} = N
     end
 
     @testset "MRG32k3a reference values" begin
-        rng = next_stream(MRG32k3aGen())
+        rng = next_stream!(MRG32k3aGen())
         @test [rand(rng) for _ in 1:5] ==
               [0.12701112204657714, 0.3185275653967945,
                0.3091860155832701, 0.8258468629271136, 0.2216299157820229]
@@ -62,7 +62,7 @@ statewords(::Type{RDST.LinRNG{N,S}}) where {N,S} = N
             (Float16, Float16[0.2314, 0.377, 0.0791]),
             (Bool,    Bool[1, 0, 1]),
         )
-            r = next_stream(MRG32k3aGen())
+            r = next_stream!(MRG32k3aGen())
             @test [rand(r, T) for _ in 1:3] == ref
         end
     end
@@ -73,7 +73,7 @@ statewords(::Type{RDST.LinRNG{N,S}}) where {N,S} = N
         @test all(0.0 .<= u .< 1.0)
         @test abs(sum(u) / length(u) - 0.5) < 0.01
 
-        r = next_stream(MRG32k3aGen())
+        r = next_stream!(MRG32k3aGen())
         v = [rand(r, 1:10) for _ in 1:10_000]
         @test all(1 .<= v .<= 10)
         @test count(==(1), v) > 500 && count(==(10), v) > 500
@@ -81,8 +81,8 @@ statewords(::Type{RDST.LinRNG{N,S}}) where {N,S} = N
 
     @testset "MRG32k3a streams & substreams" begin
         gen = MRG32k3aGen()
-        rng1 = next_stream(gen)
-        rng2 = next_stream(gen)
+        rng1 = next_stream!(gen)
+        rng2 = next_stream!(gen)
         first1 = rand(MRG32k3a(copy(rng1.Ig), copy(rng1.Ig), copy(rng1.Ig)))
         first2 = rand(MRG32k3a(copy(rng2.Ig), copy(rng2.Ig), copy(rng2.Ig)))
 
@@ -110,7 +110,7 @@ statewords(::Type{RDST.LinRNG{N,S}}) where {N,S} = N
     end
 
     @testset "MRG32k3a state handling" begin
-        rng = next_stream(MRG32k3aGen())
+        rng = next_stream!(MRG32k3aGen())
         state = get_state(rng)
         xs = [rand(rng) for _ in 1:5]
 
@@ -127,7 +127,7 @@ statewords(::Type{RDST.LinRNG{N,S}}) where {N,S} = N
     end
 
     @testset "MRG32k3a advance_state!" begin
-        ref = next_stream(MRG32k3aGen())
+        ref = next_stream!(MRG32k3aGen())
         vals = [rand(ref) for _ in 1:4]
 
         rng = MRG32k3a([12345, 12345, 12345, 12345, 12345, 12345])
@@ -154,7 +154,7 @@ statewords(::Type{RDST.LinRNG{N,S}}) where {N,S} = N
         @test_throws AssertionError MRG32k3aGen([0, 0, 0, 1, 1, 1])
 
         g2 = MRG32k3aGen([1, 2, 3, 4, 5, 6])
-        r = next_stream(g2)
+        r = next_stream!(g2)
         @test get_state(g2) != [1, 2, 3, 4, 5, 6]   # internal seed advanced
     end
 
@@ -165,9 +165,9 @@ statewords(::Type{RDST.LinRNG{N,S}}) where {N,S} = N
             0x0000000000000005, 0x0000c00000000007, 0x0000c00018000007,
             0x8001600018040302, 0x8061900024040305]
 
-        x = Xoshiro256p(seed); short_jump(x)
+        x = Xoshiro256p(seed); short_jump!(x)
         @test RDST.next(x) == 1153146630064993313
-        x = Xoshiro256p(seed); long_jump(x)
+        x = Xoshiro256p(seed); long_jump!(x)
         @test RDST.next(x) == 4237864540600467441
     end
 
@@ -193,17 +193,17 @@ statewords(::Type{RDST.LinRNG{N,S}}) where {N,S} = N
         x = Xoshiro256p(seed)
         u0 = RDST.next(x)
 
-        srand(x, seed)
+        srand!(x, seed)
         @test RDST.next(x) == u0
 
         x = Xoshiro256p(seed)
-        short_jump(x)
+        short_jump!(x)
         after_short = RDST.next(x)
         reset_substream!(x)
         @test RDST.next(x) == after_short
 
         x = Xoshiro256p(seed)
-        long_jump(x)
+        long_jump!(x)
         after_long = RDST.next(x)
         reset_stream!(x)
         @test RDST.next(x) == after_long
@@ -236,11 +236,11 @@ statewords(::Type{RDST.LinRNG{N,S}}) where {N,S} = N
         seed[1] = 0xff                     # generator must own its copy
         @test get_state(gen)[1] == 0x0d
 
-        r1 = next_stream(gen)
-        r2 = next_stream(gen)
+        r1 = next_stream!(gen)
+        r2 = next_stream!(gen)
         @test get_state(r1) != get_state(r2)
 
-        srand(gen, UInt64[1, 1, 1, 1])
+        srand!(gen, UInt64[1, 1, 1, 1])
         @test get_state(gen) == UInt64[1, 1, 1, 1]
         @test_throws ArgumentError Xoshiro256plusGen(UInt64[1, 2, 3])
     end
@@ -318,9 +318,9 @@ statewords(::Type{RDST.LinRNG{N,S}}) where {N,S} = N
             seed = splitmix_seed(statewords(T))
             x = T(seed)
             @test [RDST.next(x) for _ in 1:3] == seq
-            y = T(copy(seed)); short_jump(y)
+            y = T(copy(seed)); short_jump!(y)
             @test RDST.next(y) == shortv
-            z = T(copy(seed)); long_jump(z)
+            z = T(copy(seed)); long_jump!(z)
             @test RDST.next(z) == longv
         end
 
@@ -350,7 +350,7 @@ statewords(::Type{RDST.LinRNG{N,S}}) where {N,S} = N
             @test RDST.next(x) == w1
             reset_stream!(x)
             @test RDST.next(x) == w0
-            srand(x, fill(UInt64(0xbeef), n))
+            srand!(x, fill(UInt64(0xbeef), n))
             @test get_state(x) == fill(UInt64(0xbeef), n)
 
             io = IOBuffer()
@@ -358,8 +358,8 @@ statewords(::Type{RDST.LinRNG{N,S}}) where {N,S} = N
             @test occursin(shown_name, String(take!(io)))
 
             gen = G(fill(UInt64(0xfeed), n))
-            r1 = next_stream(gen)
-            r2 = next_stream(gen)
+            r1 = next_stream!(gen)
+            r2 = next_stream!(gen)
             s1 = Set([RDST.next(r1) for _ in 1:200])
             s2 = Set([RDST.next(r2) for _ in 1:200])
             @test isempty(intersect(s1, s2))
@@ -373,12 +373,12 @@ statewords(::Type{RDST.LinRNG{N,S}}) where {N,S} = N
     @testset "advance_state! (xoshiro families)" begin
         seed256 = fill(UInt64(0x31), 4)
 
-        # fixed-distance jumps agree with short_jump from a fresh generator
+        # fixed-distance jumps agree with short_jump! from a fresh generator
         for (T, e) in ((Xoroshiro128p, 64), (Xoshiro256ss, 128), (Xoshiro512p, 256))
             n = statewords(T)
             seed = fill(UInt64(0xabcdef), n)
             a = T(seed); b = T(seed)
-            short_jump(a)
+            short_jump!(a)
             advance_state!(b, e, 0)
             @test a.Cg == b.Cg
         end
@@ -430,6 +430,21 @@ statewords(::Type{RDST.LinRNG{N,S}}) where {N,S} = N
         bg_before = r.Bg; ig_before = r.Ig
         advance_state!(r, 10, 3)
         @test r.Bg == bg_before && r.Ig == ig_before
+    end
+
+    @testset "deprecated names" begin
+        seed = fill(UInt64(0x77), 4)
+        a = Xoshiro256p(seed)
+        @test_logs (:warn, r"deprecated") match_mode = :any begin
+            b = short_jump(a)          # old name still works...
+            @test b === a              # ...and mutates in place
+        end
+        @test_logs (:warn, r"deprecated") match_mode = :any begin
+            srand(a, seed)
+            @test get_state(a) == seed
+        end
+        gen = MRG32k3aGen()
+        @test_logs (:warn, r"deprecated") match_mode = :any next_stream(gen) isa MRG32k3a
     end
 
 end
