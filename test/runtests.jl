@@ -486,6 +486,70 @@ statewords(::Type{RDST.LinRNG{N,S}}) where {N,S} = N
               false
     end
 
+    @testset "stream API matrix across all variants" begin
+        # every stream/substream routine must work, with correct semantics,
+        # for every xoshiro/xoroshiro variant.
+        statewords(::Type{RDST.LinRNG{N,S}}) where {N,S} = N
+
+        variants = [
+            (RDST.Xoroshiro128p,    RDST.Xoroshiro128pGen),
+            (RDST.Xoroshiro128ss,   RDST.Xoroshiro128ssGen),
+            (RDST.Xoroshiro128pp,   RDST.Xoroshiro128ppGen),
+            (Xoshiro256p,           Xoshiro256plusGen),
+            (RDST.Xoshiro256ss,     RDST.Xoshiro256ssGen),
+            (RDST.Xoshiro256pp,     RDST.Xoshiro256ppGen),
+            (RDST.Xoshiro512p,      RDST.Xoshiro512pGen),
+            (RDST.Xoshiro512ss,     RDST.Xoshiro512ssGen),
+            (RDST.Xoshiro512pp,     RDST.Xoshiro512ppGen),
+        ]
+        for (T, G) in variants
+            n = statewords(T)
+            seed = fill(UInt64(0xabc), n)
+
+            gen = G(seed)
+            s1 = next_stream!(gen); s2 = next_stream!(gen)
+            @test RDST.get_state(s1) != RDST.get_state(s2)
+
+            x = T(seed); srand!(x, seed)
+            @test get_state(x) == seed
+
+            y = T(seed); z = T(seed)
+            Random.seed!(y, 987); Random.seed!(z, 987)
+            @test rand(y) == rand(z)
+
+            a = T(seed); b = copy(a)
+            RDST.next(b); RDST.next(b)
+            @test a.Cg != b.Cg
+
+            c = T(seed)
+            u0 = RDST.next(c)
+            RDST.next(c); RDST.next(c)
+            reset_stream!(c)
+            @test RDST.next(c) == u0
+
+            d = T(seed)
+            next_substream!(d)
+            w1 = RDST.next(d)
+            reset_substream!(d)
+            @test RDST.next(d) == w1
+
+            e1 = T(seed); e2 = T(seed)
+            short_jump!(e1)
+            next_substream!(e2)
+            @test e1.Bg == e2.Bg && e1.Cg == e2.Cg
+
+            f = T(seed)
+            long_jump!(f)
+            @test f.Bg == f.Cg && f.Ig == f.Cg
+
+            g = T(seed)
+            bg0, ig0 = g.Bg, g.Ig
+            advance_state!(g, 0, 999)
+            advance_state!(g, 0, -999)
+            @test g.Cg == T(seed).Cg && g.Bg == bg0 && g.Ig == ig0
+        end
+    end
+
     @testset "deprecated names" begin
         seed = fill(UInt64(0x77), 4)
         a = Xoshiro256p(seed)
