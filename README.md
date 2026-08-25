@@ -1,5 +1,9 @@
 # RDST.jl
 
+[![CI](https://github.com/JLChartrand/RDST.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/JLChartrand/RDST.jl/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://jlchartrand.github.io/RDST.jl/dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
+
 **Streamable pseudo-random number generators for Julia.**
 
 RDST (Random Data Streams) provides random number generators (RNGs) that support

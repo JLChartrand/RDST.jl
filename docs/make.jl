@@ -20,6 +20,7 @@ makedocs(;
         "Docstrings" => "docstrings.md",
         "Implementation Notes" => "implementation.md",
         "Generator Comparison" => "comparison.md",
+        "FAQ" => "faq.md",
     ],
 )
 

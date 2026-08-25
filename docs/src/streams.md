@@ -39,14 +39,29 @@ leap (2^127 values for MRG32k3a, a full `long_jump!` for Xoshiro256+), which is
 what guarantees non-overlap.
 
 ```julia
-# Typical parallel loop
-using Distributed
+# Multithreaded simulation: one stream per thread.
+# IMPORTANT: the generator object itself is not thread-safe — never share it;
+# ship each worker its own stream *starting seed* instead.
+using RDST, Base.Threads
+
 gen = MRG32k3aGen()
-@distributed (+) for _ in 1:nworkers()
-    rng = next_stream!(gen)      # note: ship seeds explicitly in real code,
-    sum(rand(rng) for _ in 1:10^6)
+starts = Vector{Vector{Int}}(undef, nthreads())
+for t in 1:nthreads()
+    starts[t] = copy(get_state(gen))   # seed of stream t
+    next_stream!(gen)                  # advance to the following stream
+end
+
+results = Vector{Float64}(undef, nthreads())
+@threads for t in 1:nthreads()
+    s = starts[t]
+    rng = MRG32k3a(s, s, s)            # rebuild stream t on this thread
+    results[t] = sum(rand(rng) for _ in 1:10^5)
 end
 ```
+
+The same pattern works with Distributed: compute the list of starting seeds on
+the master process and send one entry per worker (`@spawnat` / `remotecall`),
+then rebuild the generator locally with the triple constructor.
 
 ## Navigating substreams
 

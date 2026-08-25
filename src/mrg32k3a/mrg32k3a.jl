@@ -9,6 +9,15 @@ const checkseed = PMF.checkseed
 `MRG32k3a(x::Vector{Int})` will generate an instance of `MRG32k3a` with initial seeds `x`
 
 `MRG32k3a(x::Vector{Int}, y::Vector{Int}, z::Vector{Int})` will generate an instance of `MRG32k3a` with `Cg = x`, `Bg = y` and `Ig = z`
+
+# Examples
+
+```jldoctest
+julia> rng = MRG32k3a();
+
+julia> rand(rng)
+0.12701112204657714
+```
 """
 mutable struct MRG32k3a <: AbstractStreamableRNG
     Cg::Vector{Int64}  # the current state of the RNG
@@ -99,6 +108,17 @@ Given a random number generator, jumps n steps forward if n > 0
 if e > 0, let n = 2^e + c;
 if e < 0, let n = -2^(-e) + c;
 if e = 0, let n = c.
+
+# Examples
+
+```jldoctest
+julia> rng = MRG32k3a();
+
+julia> advance_state!(rng, Int64(2), Int64(-1));   # skip n = 2^2 - 1 = 3 values
+
+julia> rand(rng)
+0.8258468629271136
+```
 """
 function advance_state!(rng::MRG32k3a, e::Int64, c::Int64)
     if c >= 0

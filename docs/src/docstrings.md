@@ -55,6 +55,7 @@ rand(::RDST.LinRNG)
 rand(::RDST.LinRNG, ::Type{Float32})
 rand(::RDST.LinRNG, ::Type{Float16})
 rand(::RDST.LinRNG, ::UnitRange{Int64})
+rand(::MRG32k3a, ::RDST.Random.SamplerTrivial{RDST.Random.CloseOpen12_64})
 short_jump!
 long_jump!
 advance_state!

@@ -424,6 +424,15 @@ const Xoshiro256ss    = LinRNG{4,:starstar}
 xoshiro256++ (Blackman & Vigna): 256-bit state, period 2^256 - 1, all-purpose,
 3-dimensionally equidistributed (default PRNG of Julia and Rust's SmallRng).
 The recommended general-purpose variant.
+
+# Examples
+
+```jldoctest
+julia> rng = Xoshiro256pp(fill(UInt64(42), 4));
+
+julia> rand(rng, UInt64)
+0x000000002a00002a
+```
 """
 const Xoshiro256pp    = LinRNG{4,:plusplus}
 
