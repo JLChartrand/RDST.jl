@@ -1,6 +1,6 @@
 # Comparing generators: xoshiro variants vs MRG32k3a
 
-RDST.jl lets you pick between two very different generator designs. This page
+RandomDataStream.jl lets you pick between two very different generator designs. This page
 helps you choose.
 
 ## Side-by-side
@@ -29,7 +29,7 @@ helps you choose.
 - Your application consumes **floats only**: MRG32k3a emits them natively.
 - You can afford ~6x slower generation.
 
-Note: backward jumping is *no longer* a differentiator — every RDST generator
+Note: backward jumping is *no longer* a differentiator — every RandomDataStream generator
 supports `advance_state!(rng, e, c)` with negative distances.
 
 ## When to choose a xoshiro/xoroshiro variant

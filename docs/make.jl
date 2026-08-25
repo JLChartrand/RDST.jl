@@ -1,15 +1,15 @@
-using RDST
+using RandomDataStream
 using Documenter
 
-DocMeta.setdocmeta!(RDST, :DocTestSetup, :(using RDST); recursive = true)
+DocMeta.setdocmeta!(RandomDataStream, :DocTestSetup, :(using RandomDataStream); recursive = true)
 
 makedocs(;
-    sitename = "RDST.jl",
-    modules = [RDST],
+    sitename = "RandomDataStream.jl",
+    modules = [RandomDataStream],
     checkdocs = :exports,
     format = Documenter.HTML(;
         prettyurls = get(ENV, "CI", nothing) == "true",
-        canonical = "https://jlchartrand.github.io/RDST.jl",
+        canonical = "https://jlchartrand.github.io/RandomDataStream.jl",
         edit_link = "master",
     ),
     pages = [
@@ -26,7 +26,7 @@ makedocs(;
 
 if get(ENV, "CI", nothing) == "true"
     deploydocs(;
-        repo = "github.com/JLChartrand/RDST.jl.git",
+        repo = "github.com/JLChartrand/RandomDataStream.jl.git",
         devbranch = "master",
     )
 end

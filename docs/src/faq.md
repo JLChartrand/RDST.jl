@@ -15,11 +15,11 @@ are assembled from 16-bit chunks of that value. They are fine for indices,
 shuffling, flags and acceptance tests in simulations — not uniform over
 2^64/2^128. Use a xoshiro variant when you need full-width raw words.
 
-## Why doesn't `sample(v, k)` work with RDST generators?
+## Why doesn't `sample(v, k)` work with RandomDataStream generators?
 
 `sample` comes from StatsBase.jl, not from the Random standard library — even
 Julia's own RNGs do not provide it without that package. Everything in
-Random.jl works with RDST generators.
+Random.jl works with RandomDataStream generators.
 
 ## Where did `srand`, `next_stream`, `short_jump`, `long_jump` go?
 

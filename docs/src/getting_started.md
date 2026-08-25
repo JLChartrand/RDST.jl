@@ -1,6 +1,6 @@
 # Getting Started
 
-RDST.jl provides pseudo-random number generators with support for
+RandomDataStream.jl provides pseudo-random number generators with support for
 **non-overlapping streams and substreams**, following the stream/substream model
 of L'Ecuyer et al. (2002).
 
@@ -8,21 +8,21 @@ of L'Ecuyer et al. (2002).
 
 ```julia
 using Pkg
-Pkg.add(url = "https://github.com/wirelessroom2/RDST.jl")
+Pkg.add(url = "https://github.com/wirelessroom2/RandomDataStream.jl")
 ```
 
 or, from a local clone:
 
 ```julia
 using Pkg
-Pkg.develop(path = "path/to/RDST.jl")
+Pkg.develop(path = "path/to/RandomDataStream.jl")
 ```
 
 Requirements: Julia ≥ 1.6. The only dependency is the standard library `Random`.
 
 ## Choosing a generator
 
-RDST.jl implements the full xoshiro/xoroshiro family of Blackman & Vigna plus
+RandomDataStream.jl implements the full xoshiro/xoroshiro family of Blackman & Vigna plus
 L'Ecuyer's MRG32k3a. All variants of a xoshiro family share the same linear
 transition and jump constants; only the output scrambler differs.
 
@@ -44,7 +44,7 @@ See [Generator Comparison](comparison.md) for guidance and benchmarks.
 ## First numbers
 
 ```julia
-using RDST
+using RandomDataStream
 
 rng = MRG32k3a()      # default seed [12345, ..., 12345]
 rand(rng)             # 0.12701112204657714
@@ -98,14 +98,14 @@ Random.seed!(rng, [7,7,7,8,8,8])   # explicit MRG32k3a seed (validated)
 
 ## Full Random API
 
-RDST generators are drop-in substitutes for Julia's built-in RNGs: anywhere a
-function accepts an `AbstractRNG`, you can pass an RDST generator and keep
+RandomDataStream generators are drop-in substitutes for Julia's built-in RNGs: anywhere a
+function accepts an `AbstractRNG`, you can pass an RandomDataStream generator and keep
 your stream/substream control.
 
 ```julia
-using RDST, Random
+using RandomDataStream, Random
 
-rng = next_stream!(MRG32k3aGen())     # any RDST generator works here
+rng = next_stream!(MRG32k3aGen())     # any RandomDataStream generator works here
 
 rand(rng, 5)                          # Vector{Float64}, 5 draws
 A = rand(rng, Float64, 2, 3)          # 2x3 matrix

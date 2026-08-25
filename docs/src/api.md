@@ -1,6 +1,6 @@
 # API Reference
 
-All names below are exported by the `RDST` module unless marked *(internal)*.
+All names below are exported by the `RandomDataStream` module unless marked *(internal)*.
 
 ## Types
 

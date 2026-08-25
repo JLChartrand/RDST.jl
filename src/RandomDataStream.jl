@@ -2,7 +2,7 @@
 Streamable Random Number Generator, see `AbstractStreamableRNG`
 """
 
-module RDST
+module RandomDataStream
 
 using Random
 

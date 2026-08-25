@@ -1,6 +1,6 @@
 # Streams & Substreams
 
-The central abstraction of RDST.jl is the *stream*: a long, non-overlapping
+The central abstraction of RandomDataStream.jl is the *stream*: a long, non-overlapping
 subsequence of a generator's period. Streams can themselves be split into
 *substreams*. This is the architecture recommended by L'Ecuyer et al. (2002)
 for parallel and replicated stochastic simulation:
@@ -37,9 +37,9 @@ Var[D̂_CRN] = Var[Ȳ₁]/n + Var[Ȳ₂]/n − 2·Cov[Ȳ₁, Ȳ₂]/n
 
 — often orders of magnitude smaller. But CRN only works if the random number
 usage can be *synchronised exactly* across configurations, replication after
-replication. That is precisely what RDST's machinery guarantees:
+replication. That is precisely what RandomDataStream's machinery guarantees:
 
-| Need | RDST tool |
+| Need | RandomDataStream tool |
 |---|---|
 | Replications must be independent | a fresh stream per replication (`next_stream!`) |
 | Configurations must see identical randomness | rewind each configuration to the same substream start (`reset_stream!` / `reset_substream!`) |
@@ -51,7 +51,7 @@ Daily cost of an inventory system over 30 days (demands N(100, 20) truncated
 at 0), comparing stock level s = 50 vs s = 60:
 
 ```julia
-using RDST, Statistics
+using RandomDataStream, Statistics
 
 function cost(s, rng)
     total, stock = 0.0, Float64(s)
@@ -116,7 +116,7 @@ when each replication itself contains several scenarios.
 ## Producing independent streams
 
 ```julia
-using RDST
+using RandomDataStream
 
 gen = MRG32k3aGen()             # or Xoshiro256plusGen(UInt64[...])
 
@@ -133,7 +133,7 @@ what guarantees non-overlap.
 # Multithreaded simulation: one stream per thread.
 # IMPORTANT: the generator object itself is not thread-safe — never share it;
 # ship each worker its own stream *starting seed* instead.
-using RDST, Base.Threads
+using RandomDataStream, Base.Threads
 
 gen = MRG32k3aGen()
 starts = Vector{Vector{Int}}(undef, nthreads())

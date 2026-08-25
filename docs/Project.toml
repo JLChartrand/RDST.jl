@@ -1,6 +1,6 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
-RDST = "dc077566-edc2-11e8-0ce0-7d758bb9a5d1"
+RandomDataStream = "dc077566-edc2-11e8-0ce0-7d758bb9a5d1"
 
 [compat]
 Documenter = "1"
