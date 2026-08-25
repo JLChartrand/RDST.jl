@@ -43,8 +43,11 @@ derives from this without further plumbing.
 rand(rng::MRG32k3a, ::Random.SamplerTrivial{Random.CloseOpen12_64}) = 1.0 + rand(rng)
 
 # Full-width 64-bit channel assembled from two [1,2) draws (each carries 52
-# random bits); enables BigFloat and anything else requiring has_fast_64.
-Random.has_fast_64(::MRG32k3a) = true
+# random bits); enables BigFloat and anything else requiring a fast 64-bit
+# path. `has_fast_64` only exists in newer Julia versions.
+@static if isdefined(Random, :has_fast_64)
+    Random.has_fast_64(::MRG32k3a) = true
+end
 rand(rng::MRG32k3a, ::Random.SamplerType{UInt64}) =
     (reinterpret(UInt64, rand(rng, Random.CloseOpen12_64())) << 12) ⊻
     (reinterpret(UInt64, rand(rng, Random.CloseOpen12_64())) >>> 40)

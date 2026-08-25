@@ -1,20 +1,8 @@
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.12.5"
-manifest_format = "2.0"
-project_hash = "20084020bcd720b0ac5937526fe908ad0c9db294"
-
-[[deps.RDST]]
-deps = ["Random"]
-path = "."
-uuid = "dc077566-edc2-11e8-0ce0-7d758bb9a5d1"
-version = "0.1.0"
-
-[[deps.Random]]
-deps = ["SHA"]
+[[Random]]
+deps = ["Serialization"]
 uuid = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
-version = "1.11.0"
 
-[[deps.SHA]]
-uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
-version = "0.7.0"
+[[Serialization]]
+uuid = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
