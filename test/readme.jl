@@ -3,7 +3,8 @@
 @testset "README examples" begin
     readme_path = joinpath(dirname(@__DIR__), "README.md")
     text = read(readme_path, String)
-    blocks = [strip(m.captures[1]) for m in eachmatch(r"```julia\n(.*?)```"s, text)]
+    blocks = [strip(replace(m.captures[1], '\r' => ""))
+              for m in eachmatch(r"```julia\r?\n(.*?)```"s, text)]
     @test length(blocks) >= 5
 
     for (i, code) in enumerate(blocks)
