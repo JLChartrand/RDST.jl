@@ -308,7 +308,7 @@ Return a random Float64 in [0, 1).
 """
 rand(rng::LinRNG) = next(rng) / (UInt64(0) - 1)
 
-# Generic stream generator ----------------------------------------------------------
+# Generic stream generator ---------------------------------------------------------
 
 """
     LinGen{N,S} <: AbstractRNGStream
