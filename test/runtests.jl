@@ -566,3 +566,5 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
     end
 
 end
+
+include("readme.jl")

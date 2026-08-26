@@ -10,7 +10,7 @@ mutable struct MRG32k3aGen <: AbstractRNGStream
         new(copy(x))
     end
 end
-#show imported in RDST/src.jl
+#show imported in RandomDataStreams.jl in src
 function show(io::IO,rng_gen::MRG32k3aGen)
     print(io,"Seed for next MRG32k3a generator:\n$(rng_gen.seed)")
 end

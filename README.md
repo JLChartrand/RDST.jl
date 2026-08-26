@@ -1,6 +1,7 @@
 # RandomDataStreams.jl
 
 [![CI](https://github.com/JLChartrand/RandomDataStreams.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/JLChartrand/RandomDataStreams.jl/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/JLChartrand/RandomDataStreams.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/JLChartrand/RandomDataStreams.jl)
 [![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://jlchartrand.github.io/RandomDataStreams.jl/dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
 
@@ -42,7 +43,7 @@ See the [documentation](docs/) for a detailed comparison with MRG32k3a.
 
 ```julia
 using Pkg
-Pkg.add(url = "https://github.com/JLChartrand/RandomDataStreams.jl.git")
+Pkg.add("RandomDataStreams")
 ```
 
 Requires Julia ≥ 1.6. The only dependency is the Julia standard library `Random`.
@@ -121,7 +122,7 @@ rng2 = MRG32k3a(state, state, state) # restore into a new generator
 
 ```julia
 rng = MRG32k3a()
-advance_state!(rng, e, c)    # jumps n steps where n = 2^e + c (c may be negative)
+advance_state!(rng, 10, -3)  # jumps n = 2^10 - 3 = 1021 steps forward
 ```
 
 ## Documentation

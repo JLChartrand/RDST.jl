@@ -8,7 +8,7 @@ of L'Ecuyer et al. (2002).
 
 ```julia
 using Pkg
-Pkg.add(url = "https://github.com/wirelessroom2/RandomDataStreams.jl")
+Pkg.add("RandomDataStreams")
 ```
 
 or, from a local clone:

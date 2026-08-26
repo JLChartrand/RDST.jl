@@ -34,7 +34,7 @@ mutable struct MRG32k3a <: AbstractStreamableRNG
         return new(copy(x),copy(y),copy(z))
     end
 end
-#copy imported in RDST.jl in src
+#copy imported in RandomDataStreams.jl in src
 function copy(m::MRG32k3a)
     MRG32k3a(copy(m.Cg), copy(m.Bg), copy(m.Ig))
 end
@@ -91,7 +91,7 @@ function next_substream!(rng::MRG32k3a)::MRG32k3a
     end
     return rng
 end
-#show imported in RDST/src.jl
+#show imported in RandomDataStreams.jl in src
 function show(io::IO,rng::MRG32k3a)
     print(io,"Full state of MRG32k3a generator:\nCg = $(rng.Cg)\nBg = $(rng.Bg)\nIg = $(rng.Ig)")
 end
