@@ -14,6 +14,8 @@ jobs:
   test:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -41,3 +43,4 @@ jobs:
       - uses: codecov/codecov-action@v5
         with:
           files: lcov.info
+          use_oidc: true
