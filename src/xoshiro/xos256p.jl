@@ -324,6 +324,13 @@ mutable struct LinGen{N,S} <: AbstractRNGStream
         length(x) == N || throw(ArgumentError("seed must have $N UInt64 elements"))
         new{N,S}(copy(x))
     end
+    function LinGen{N,S}(x::Vector{T}) where {N, S, T <: Integer}
+        #if the user something else than UInt64, we convert it to a required type.
+        #float are not implemented right now, could be done in the future.
+        newx = mod.(x, UInt64)
+        length(x) == N || throw(ArgumentError("seed must have $N UInt64 elements"))
+        new{N,S}(copy(newx))
+    end
 end
 
 function _variant_name(::Type{<:LinRNG{2,:plus}});      "Xoroshiro128plus";   end

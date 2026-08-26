@@ -60,7 +60,7 @@ rng = next_stream!(gen)       # a fresh, independent stream
 rand(rng)                    # Float64 in [0, 1)
 rand(rng, UInt64)            # raw 64-bit unsigned integer
 rand(rng, Int32)
-rand(rng, 1:10)              # not yet implemented for MRG32k3a; use Xoshiro256p
+rand(rng, 1:10)              # random number in 1:10
 ```
 
 ### Xoshiro256+
@@ -127,7 +127,7 @@ advance_state!(rng, e, c)    # jumps n steps where n = 2^e + c (c may be negativ
 ## Documentation
 
 Full documentation lives in [`docs/`](docs/) and as a PDF in
-[`docs/RandomDataStreams.pdf`](docs/build/RandomDataStreams.pdf):
+[`docs/RandomDataStreams.pdf`](docs/RandomDataStreams.pdf):
 
 - [Getting started](docs/src/getting_started.md)
 - [Streams & substreams](docs/src/streams.md)
