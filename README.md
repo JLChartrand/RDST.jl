@@ -6,7 +6,7 @@
 
 **Streamable pseudo-random number generators for Julia.**
 
-RandomDataStreamss (Random Data Streams) provides random number generators (RNGs) that support
+RandomDataStreams (Random Data Streams) provides random number generators (RNGs) that support
 **non-overlapping streams and substreams**, in the sense of L'Ecuyer et al. (2002).
 This is a key requirement for stochastic simulation, parallel Monte Carlo, and
 reproducible variance-reduction techniques such as common random numbers.
