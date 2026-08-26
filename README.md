@@ -42,7 +42,7 @@ See the [documentation](docs/) for a detailed comparison with MRG32k3a.
 
 ```julia
 using Pkg
-Pkg.add(url = "https://github.com/wirelessroom2/RandomDataStreams.jl")
+Pkg.add(url = "https://github.com/JLChartrand/RandomDataStreams.jl.git")
 ```
 
 Requires Julia ≥ 1.6. The only dependency is the Julia standard library `Random`.
