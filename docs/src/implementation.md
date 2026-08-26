@@ -60,11 +60,11 @@ output have limited linear complexity — irrelevant once scaled to `Float64`
 
 `short_jump!` and `long_jump!` use Vigna's published jump polynomials. They are
 computed as XOR-linear combinations of states visited while stepping through
-the 256 bits of each jump constant. RandomDataStream.jl hoists the jump constants into
+the 256 bits of each jump constant. RandomDataStreams.jl hoists the jump constants into
 compile-time tuples and evaluates jumps allocation-free on immutable state
 tuples.
 
-RandomDataStream semantics differ subtly from the reference C code: jumps are **anchored**
+RandomDataStreams semantics differ subtly from the reference C code: jumps are **anchored**
 at stream boundaries. `short_jump!(rng)` first resets `Cg ← Bg`, then applies
 the jump polynomial, and stores the result in both `Cg` and `Bg`;
 `long_jump!(rng)` does the same with respect to `Ig`. This matches L'Ecuyer's
@@ -96,7 +96,7 @@ family's characteristic polynomial, as published in Vigna's reference files —
 one can jump any distance n in constant time by applying the polynomial
 `x^n mod p` through the same accumulate-and-step loop as the fixed jumps.
 Backward distances use the multiplicative order of x: `x^(-n) = x^(2^deg-1-n)`
-(deg = 64N). RandomDataStream.jl implements a small GF(2) polynomial engine
+(deg = 64N). RandomDataStreams.jl implements a small GF(2) polynomial engine
 (`_poly_mul_mod`, `_poly_pow_x`, BigInt exponents reduced modulo the period)
 and exposes it as `advance_state!(rng, e, c)` with the exact distance
 convention of MRG32k3a. Correctness is property-tested: fixed jumps coincide

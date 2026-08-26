@@ -1,25 +1,25 @@
-using RandomDataStream
+using RandomDataStreams
 using Test
 using Random
 
-statewords(::Type{RandomDataStream.LinRNG{N,S}}) where {N,S} = N
+statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
 
-@testset "RandomDataStream.jl" begin
+@testset "RandomDataStreams.jl" begin
 
     @testset "checkseed" begin
-        @test checkseed(RandomDataStream.DEFAULT_SEED)
+        @test checkseed(RandomDataStreams.DEFAULT_SEED)
         @test !checkseed([1, 2, 3, 4, 5])                       # wrong length
         @test !checkseed([0, 0, 0, 1, 1, 1])                    # all-zero first component
         @test !checkseed([1, 1, 1, 0, 0, 0])                    # all-zero second component
         @test !checkseed([-1, 1, 1, 1, 1, 1])                   # negative entry
-        @test !checkseed([RandomDataStream.PMF.m1, 1, 1, 1, 1, 1])          # >= m1 in first half
-        @test !checkseed([1, 1, 1, RandomDataStream.PMF.m2, 1, 1])          # >= m2 in second half
-        @test checkseed([RandomDataStream.PMF.m1 - 1, RandomDataStream.PMF.m2 - 1, 7, RandomDataStream.PMF.m2 - 1, 3, 9])
+        @test !checkseed([RandomDataStreams.PMF.m1, 1, 1, 1, 1, 1])          # >= m1 in first half
+        @test !checkseed([1, 1, 1, RandomDataStreams.PMF.m2, 1, 1])          # >= m2 in second half
+        @test checkseed([RandomDataStreams.PMF.m1 - 1, RandomDataStreams.PMF.m2 - 1, 7, RandomDataStreams.PMF.m2 - 1, 3, 9])
     end
 
     @testset "MRG32k3a constructors" begin
         rng = MRG32k3a()
-        @test rng.Cg == RandomDataStream.DEFAULT_SEED && rng.Bg == RandomDataStream.DEFAULT_SEED && rng.Ig == RandomDataStream.DEFAULT_SEED
+        @test rng.Cg == RandomDataStreams.DEFAULT_SEED && rng.Bg == RandomDataStreams.DEFAULT_SEED && rng.Ig == RandomDataStreams.DEFAULT_SEED
 
         seed = [42, 1, 2, 3, 4, 5]
         rng = MRG32k3a(seed)
@@ -146,8 +146,8 @@ statewords(::Type{RandomDataStream.LinRNG{N,S}}) where {N,S} = N
 
     @testset "MRG32k3aGen" begin
         gen = MRG32k3aGen()
-        @test gen.seed == RandomDataStream.DEFAULT_SEED
-        @test get_state(gen) == RandomDataStream.DEFAULT_SEED
+        @test gen.seed == RandomDataStreams.DEFAULT_SEED
+        @test get_state(gen) == RandomDataStreams.DEFAULT_SEED
 
         custom = MRG32k3aGen([7, 7, 7, 8, 8, 8])
         @test get_state(custom) == [7, 7, 7, 8, 8, 8]
@@ -161,14 +161,14 @@ statewords(::Type{RandomDataStream.LinRNG{N,S}}) where {N,S} = N
     @testset "Xoshiro256p reference values" begin
         seed = UInt64[0x01, 0x02, 0x03, 0x04]
         x = Xoshiro256p(seed)
-        @test [RandomDataStream.next(x) for _ in 1:5] == UInt64[
+        @test [RandomDataStreams.next(x) for _ in 1:5] == UInt64[
             0x0000000000000005, 0x0000c00000000007, 0x0000c00018000007,
             0x8001600018040302, 0x8061900024040305]
 
         x = Xoshiro256p(seed); short_jump!(x)
-        @test RandomDataStream.next(x) == 1153146630064993313
+        @test RandomDataStreams.next(x) == 1153146630064993313
         x = Xoshiro256p(seed); long_jump!(x)
-        @test RandomDataStream.next(x) == 4237864540600467441
+        @test RandomDataStreams.next(x) == 4237864540600467441
     end
 
     @testset "Xoshiro256p outputs" begin
@@ -191,27 +191,27 @@ statewords(::Type{RandomDataStream.LinRNG{N,S}}) where {N,S} = N
     @testset "Xoshiro256p streams & substreams" begin
         seed = UInt64[0x01, 0x02, 0x03, 0x04]
         x = Xoshiro256p(seed)
-        u0 = RandomDataStream.next(x)
+        u0 = RandomDataStreams.next(x)
 
         srand!(x, seed)
-        @test RandomDataStream.next(x) == u0
+        @test RandomDataStreams.next(x) == u0
 
         x = Xoshiro256p(seed)
         short_jump!(x)
-        after_short = RandomDataStream.next(x)
+        after_short = RandomDataStreams.next(x)
         reset_substream!(x)
-        @test RandomDataStream.next(x) == after_short
+        @test RandomDataStreams.next(x) == after_short
 
         x = Xoshiro256p(seed)
         long_jump!(x)
-        after_long = RandomDataStream.next(x)
+        after_long = RandomDataStreams.next(x)
         reset_stream!(x)
-        @test RandomDataStream.next(x) == after_long
+        @test RandomDataStreams.next(x) == after_long
 
         next_substream!(x)
-        ns = RandomDataStream.next(x)
+        ns = RandomDataStreams.next(x)
         reset_substream!(x)
-        @test RandomDataStream.next(x) == ns
+        @test RandomDataStreams.next(x) == ns
     end
 
     @testset "Xoshiro256p state" begin
@@ -219,13 +219,13 @@ statewords(::Type{RandomDataStream.LinRNG{N,S}}) where {N,S} = N
         x = Xoshiro256p(seed)
         st = get_state(x)
         @test st isa Vector{UInt64} && length(st) == 4
-        expected = RandomDataStream.next(x)
+        expected = RandomDataStreams.next(x)
         y = Xoshiro256p(st)
-        @test RandomDataStream.next(y) == expected
+        @test RandomDataStreams.next(y) == expected
 
         c = copy(x)
-        RandomDataStream.next(c)
-        @test RandomDataStream.next(x) != RandomDataStream.next(c)
+        RandomDataStreams.next(c)
+        @test RandomDataStreams.next(x) != RandomDataStreams.next(c)
     end
 
     @testset "Xoshiro256plusGen" begin
@@ -286,50 +286,50 @@ statewords(::Type{RandomDataStream.LinRNG{N,S}}) where {N,S} = N
         end
 
         refs = [
-            ("x128p", RandomDataStream.Xoroshiro128p,
+            ("x128p", RandomDataStreams.Xoroshiro128p,
              [16078810691027958445, 16308033409981753773, 2459436067589474410],
              UInt64(3256517475130558849), UInt64(9914398136390617976)),
-            ("x128ss", RandomDataStream.Xoroshiro128ss,
+            ("x128ss", RandomDataStreams.Xoroshiro128ss,
              [1368380786106859145, 4084486448798807325, 5543098162342028434],
              UInt64(13270538264984994966), UInt64(11920770361629577860)),
-            ("x128pp", RandomDataStream.Xoroshiro128pp,
+            ("x128pp", RandomDataStreams.Xoroshiro128pp,
              [1673598725564225250, 4573856857203627046, 16115075492912290848],
              UInt64(6730732423063272729), UInt64(3990584750745030224)),
-            ("x256p", RandomDataStream.Xoshiro256p,
+            ("x256p", RandomDataStreams.Xoshiro256p,
              [9347869054091033467, 4771635083329966370, 15370539120085914707],
              UInt64(5160113462924517804), UInt64(15646076907341602619)),
-            ("x256ss", RandomDataStream.Xoshiro256ss,
+            ("x256ss", RandomDataStreams.Xoshiro256ss,
              [1368380786106859145, 14675459340006078963, 5910136538917692306],
              UInt64(10763142405286072350), UInt64(16578569578879967412)),
-            ("x256pp", RandomDataStream.Xoshiro256pp,
+            ("x256pp", RandomDataStreams.Xoshiro256pp,
              [17674668620475692482, 5475324084790473842, 16549419549621501831],
              UInt64(16231616900645524224), UInt64(13257993063221304277)),
-            ("x512p", RandomDataStream.Xoshiro512p,
+            ("x512p", RandomDataStreams.Xoshiro512p,
              [17616468189221365395, 12780371331858795586, 9670281856951386802],
              UInt64(16537263715482372943), UInt64(2902670574299405512)),
-            ("x512ss", RandomDataStream.Xoshiro512ss,
+            ("x512ss", RandomDataStreams.Xoshiro512ss,
              [1368380786106859145, 14675459340006078963, 11156859077635828455],
              UInt64(2926543538459652119), UInt64(10490133114023169214)),
-            ("x512pp", RandomDataStream.Xoshiro512pp,
+            ("x512pp", RandomDataStreams.Xoshiro512pp,
              [4070133962183833323, 16966997717490759717, 12310346514993803299],
              UInt64(13604293740491481571), UInt64(151834235382922295)),
         ]
         for (name, T, seq, shortv, longv) in refs
             seed = splitmix_seed(statewords(T))
             x = T(seed)
-            @test [RandomDataStream.next(x) for _ in 1:3] == seq
+            @test [RandomDataStreams.next(x) for _ in 1:3] == seq
             y = T(copy(seed)); short_jump!(y)
-            @test RandomDataStream.next(y) == shortv
+            @test RandomDataStreams.next(y) == shortv
             z = T(copy(seed)); long_jump!(z)
-            @test RandomDataStream.next(z) == longv
+            @test RandomDataStreams.next(z) == longv
         end
 
         allvariants = [
-            ("Xoroshiro128plus",     RandomDataStream.Xoroshiro128p,    RandomDataStream.Xoroshiro128pGen),
-            ("Xoroshiro128starstar", RandomDataStream.Xoroshiro128ss,   RandomDataStream.Xoroshiro128ssGen),
-            ("Xoshiro256plusplus",   RandomDataStream.Xoshiro256pp,     RandomDataStream.Xoshiro256ppGen),
-            ("Xoshiro512plus",       RandomDataStream.Xoshiro512p,      RandomDataStream.Xoshiro512pGen),
-            ("Xoshiro512starstar",   RandomDataStream.Xoshiro512ss,     RandomDataStream.Xoshiro512ssGen),
+            ("Xoroshiro128plus",     RandomDataStreams.Xoroshiro128p,    RandomDataStreams.Xoroshiro128pGen),
+            ("Xoroshiro128starstar", RandomDataStreams.Xoroshiro128ss,   RandomDataStreams.Xoroshiro128ssGen),
+            ("Xoshiro256plusplus",   RandomDataStreams.Xoshiro256pp,     RandomDataStreams.Xoshiro256ppGen),
+            ("Xoshiro512plus",       RandomDataStreams.Xoshiro512p,      RandomDataStreams.Xoshiro512pGen),
+            ("Xoshiro512starstar",   RandomDataStreams.Xoshiro512ss,     RandomDataStreams.Xoshiro512ssGen),
         ]
         for (shown_name, T, G) in allvariants
             n = statewords(T)
@@ -343,13 +343,13 @@ statewords(::Type{RandomDataStream.LinRNG{N,S}}) where {N,S} = N
             @test all(1 .<= v .<= 100)
 
             x = T(fill(UInt64(0xbeef), n))
-            w0 = RandomDataStream.next(x)
+            w0 = RandomDataStreams.next(x)
             next_substream!(x)
-            w1 = RandomDataStream.next(x)
+            w1 = RandomDataStreams.next(x)
             reset_substream!(x)
-            @test RandomDataStream.next(x) == w1
+            @test RandomDataStreams.next(x) == w1
             reset_stream!(x)
-            @test RandomDataStream.next(x) == w0
+            @test RandomDataStreams.next(x) == w0
             srand!(x, fill(UInt64(0xbeef), n))
             @test get_state(x) == fill(UInt64(0xbeef), n)
 
@@ -360,8 +360,8 @@ statewords(::Type{RandomDataStream.LinRNG{N,S}}) where {N,S} = N
             gen = G(fill(UInt64(0xfeed), n))
             r1 = next_stream!(gen)
             r2 = next_stream!(gen)
-            s1 = Set([RandomDataStream.next(r1) for _ in 1:200])
-            s2 = Set([RandomDataStream.next(r2) for _ in 1:200])
+            s1 = Set([RandomDataStreams.next(r1) for _ in 1:200])
+            s2 = Set([RandomDataStreams.next(r2) for _ in 1:200])
             @test isempty(intersect(s1, s2))
             @test get_state(gen) != fill(UInt64(0xfeed), n)
         end
@@ -387,9 +387,9 @@ statewords(::Type{RandomDataStream.LinRNG{N,S}}) where {N,S} = N
         for k in (1, 2, 3, 17, 1000)
             y = Xoshiro256p(seed256)
             advance_state!(y, 0, k)
-            st = RandomDataStream._lin_step(Xoshiro256p(seed256).Cg)
+            st = RandomDataStreams._lin_step(Xoshiro256p(seed256).Cg)
             for _ in 2:k
-                st = RandomDataStream._lin_step(st)
+                st = RandomDataStreams._lin_step(st)
             end
             @test y.Cg == st
         end
@@ -397,7 +397,7 @@ statewords(::Type{RandomDataStream.LinRNG{N,S}}) where {N,S} = N
         # round trip: +k then -k restores the exact position
         for T in (Xoroshiro128pp, Xoshiro256p, Xoshiro512ss)
             x = T(fill(UInt64(7), statewords(T)))
-            foreach(_ -> RandomDataStream.next(x), 1:13)
+            foreach(_ -> RandomDataStreams.next(x), 1:13)
             orig = x.Cg
             advance_state!(x, 0, 12345)
             @test x.Cg != orig
@@ -407,10 +407,10 @@ statewords(::Type{RandomDataStream.LinRNG{N,S}}) where {N,S} = N
 
         # backward jump then re-draw reproduces earlier values
         x = Xoshiro512pp(fill(UInt64(9), 8))
-        v1 = RandomDataStream.next(x)
-        RandomDataStream.next(x)
+        v1 = RandomDataStreams.next(x)
+        RandomDataStreams.next(x)
         advance_state!(x, 0, -2)
-        @test RandomDataStream.next(x) == v1
+        @test RandomDataStreams.next(x) == v1
 
         # distance convention n = 2^e + c (e > 0), -2^-e + c (e < 0), c (e = 0)
         x = Xoshiro256p(seed256); advance_state!(x, 0, 7); advance_state!(x, -1, -1)   # -3
@@ -418,7 +418,7 @@ statewords(::Type{RandomDataStream.LinRNG{N,S}}) where {N,S} = N
         @test x.Cg == z.Cg
 
         a = Xoshiro256p(seed256); advance_state!(a, -2, 5)                             # +1
-        @test a.Cg == RandomDataStream._lin_step(Xoshiro256p(seed256).Cg)
+        @test a.Cg == RandomDataStreams._lin_step(Xoshiro256p(seed256).Cg)
 
         # distances beyond the period are reduced modulo the period
         x = Xoshiro256p(fill(UInt64(5), 4)); advance_state!(x, 1000, 0)
@@ -434,7 +434,7 @@ statewords(::Type{RandomDataStream.LinRNG{N,S}}) where {N,S} = N
 
     @testset "Random API parity" begin
         # drop-in substitutability with the standard library's Xoshiro:
-        # every operation below must work for every RandomDataStream generator.
+        # every operation below must work for every RandomDataStreams generator.
         mk = [
             () -> MRG32k3a([42, 1, 2, 3, 4, 5]),
             () -> Xoshiro256pp(fill(UInt64(42), 4)),
@@ -489,18 +489,18 @@ statewords(::Type{RandomDataStream.LinRNG{N,S}}) where {N,S} = N
     @testset "stream API matrix across all variants" begin
         # every stream/substream routine must work, with correct semantics,
         # for every xoshiro/xoroshiro variant.
-        statewords(::Type{RandomDataStream.LinRNG{N,S}}) where {N,S} = N
+        statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
 
         variants = [
-            (RandomDataStream.Xoroshiro128p,    RandomDataStream.Xoroshiro128pGen),
-            (RandomDataStream.Xoroshiro128ss,   RandomDataStream.Xoroshiro128ssGen),
-            (RandomDataStream.Xoroshiro128pp,   RandomDataStream.Xoroshiro128ppGen),
+            (RandomDataStreams.Xoroshiro128p,    RandomDataStreams.Xoroshiro128pGen),
+            (RandomDataStreams.Xoroshiro128ss,   RandomDataStreams.Xoroshiro128ssGen),
+            (RandomDataStreams.Xoroshiro128pp,   RandomDataStreams.Xoroshiro128ppGen),
             (Xoshiro256p,           Xoshiro256plusGen),
-            (RandomDataStream.Xoshiro256ss,     RandomDataStream.Xoshiro256ssGen),
-            (RandomDataStream.Xoshiro256pp,     RandomDataStream.Xoshiro256ppGen),
-            (RandomDataStream.Xoshiro512p,      RandomDataStream.Xoshiro512pGen),
-            (RandomDataStream.Xoshiro512ss,     RandomDataStream.Xoshiro512ssGen),
-            (RandomDataStream.Xoshiro512pp,     RandomDataStream.Xoshiro512ppGen),
+            (RandomDataStreams.Xoshiro256ss,     RandomDataStreams.Xoshiro256ssGen),
+            (RandomDataStreams.Xoshiro256pp,     RandomDataStreams.Xoshiro256ppGen),
+            (RandomDataStreams.Xoshiro512p,      RandomDataStreams.Xoshiro512pGen),
+            (RandomDataStreams.Xoshiro512ss,     RandomDataStreams.Xoshiro512ssGen),
+            (RandomDataStreams.Xoshiro512pp,     RandomDataStreams.Xoshiro512ppGen),
         ]
         for (T, G) in variants
             n = statewords(T)
@@ -508,7 +508,7 @@ statewords(::Type{RandomDataStream.LinRNG{N,S}}) where {N,S} = N
 
             gen = G(seed)
             s1 = next_stream!(gen); s2 = next_stream!(gen)
-            @test RandomDataStream.get_state(s1) != RandomDataStream.get_state(s2)
+            @test RandomDataStreams.get_state(s1) != RandomDataStreams.get_state(s2)
 
             x = T(seed); srand!(x, seed)
             @test get_state(x) == seed
@@ -518,20 +518,20 @@ statewords(::Type{RandomDataStream.LinRNG{N,S}}) where {N,S} = N
             @test rand(y) == rand(z)
 
             a = T(seed); b = copy(a)
-            RandomDataStream.next(b); RandomDataStream.next(b)
+            RandomDataStreams.next(b); RandomDataStreams.next(b)
             @test a.Cg != b.Cg
 
             c = T(seed)
-            u0 = RandomDataStream.next(c)
-            RandomDataStream.next(c); RandomDataStream.next(c)
+            u0 = RandomDataStreams.next(c)
+            RandomDataStreams.next(c); RandomDataStreams.next(c)
             reset_stream!(c)
-            @test RandomDataStream.next(c) == u0
+            @test RandomDataStreams.next(c) == u0
 
             d = T(seed)
             next_substream!(d)
-            w1 = RandomDataStream.next(d)
+            w1 = RandomDataStreams.next(d)
             reset_substream!(d)
-            @test RandomDataStream.next(d) == w1
+            @test RandomDataStreams.next(d) == w1
 
             e1 = T(seed); e2 = T(seed)
             short_jump!(e1)

@@ -1,12 +1,12 @@
-# RandomDataStream.jl
+# RandomDataStreamss.jl
 
-[![CI](https://github.com/JLChartrand/RandomDataStream.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/JLChartrand/RandomDataStream.jl/actions/workflows/ci.yml)
-[![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://jlchartrand.github.io/RandomDataStream.jl/dev)
+[![CI](https://github.com/JLChartrand/RandomDataStreamss.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/JLChartrand/RandomDataStreamss.jl/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://jlchartrand.github.io/RandomDataStreamss.jl/dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
 
 **Streamable pseudo-random number generators for Julia.**
 
-RandomDataStream (Random Data Streams) provides random number generators (RNGs) that support
+RandomDataStreamss (Random Data Streams) provides random number generators (RNGs) that support
 **non-overlapping streams and substreams**, in the sense of L'Ecuyer et al. (2002).
 This is a key requirement for stochastic simulation, parallel Monte Carlo, and
 reproducible variance-reduction techniques such as common random numbers.
@@ -42,7 +42,7 @@ See the [documentation](docs/) for a detailed comparison with MRG32k3a.
 
 ```julia
 using Pkg
-Pkg.add(url = "https://github.com/wirelessroom2/RandomDataStream.jl")
+Pkg.add(url = "https://github.com/wirelessroom2/RandomDataStreams.jl")
 ```
 
 Requires Julia ≥ 1.6. The only dependency is the Julia standard library `Random`.
@@ -52,7 +52,7 @@ Requires Julia ≥ 1.6. The only dependency is the Julia standard library `Rando
 ### MRG32k3a
 
 ```julia
-using RandomDataStream
+using RandomDataStreams
 
 gen = MRG32k3aGen()          # stream generator (manages non-overlapping seeds)
 rng = next_stream!(gen)       # a fresh, independent stream
@@ -66,7 +66,7 @@ rand(rng, 1:10)              # not yet implemented for MRG32k3a; use Xoshiro256p
 ### Xoshiro256+
 
 ```julia
-using RandomDataStream
+using RandomDataStreams
 
 gen = Xoshiro256plusGen([0x01, 0x02, 0x03, 0x04])
 rng = next_stream!(gen)
@@ -93,9 +93,9 @@ reset_stream!(rng1)          # back to the very beginning of the stream
 ### Drop-in use with Julia's standard RNG API
 
 ```julia
-using RandomDataStream, Random
+using RandomDataStreams, Random
 
-rng = next_stream!(MRG32k3aGen())   # any RandomDataStream generator works as an AbstractRNG
+rng = next_stream!(MRG32k3aGen())   # any RandomDataStreams generator works as an AbstractRNG
 
 rand(rng, 5)                        # Vector{Float64}
 A = rand(rng, Float64, 2, 3)        # matrix
@@ -127,7 +127,7 @@ advance_state!(rng, e, c)    # jumps n steps where n = 2^e + c (c may be negativ
 ## Documentation
 
 Full documentation lives in [`docs/`](docs/) and as a PDF in
-[`docs/RandomDataStream.pdf`](docs/build/RandomDataStream.pdf):
+[`docs/RandomDataStreams.pdf`](docs/build/RandomDataStreams.pdf):
 
 - [Getting started](docs/src/getting_started.md)
 - [Streams & substreams](docs/src/streams.md)

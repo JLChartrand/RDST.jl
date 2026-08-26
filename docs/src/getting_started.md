@@ -1,6 +1,6 @@
 # Getting Started
 
-RandomDataStream.jl provides pseudo-random number generators with support for
+RandomDataStreams.jl provides pseudo-random number generators with support for
 **non-overlapping streams and substreams**, following the stream/substream model
 of L'Ecuyer et al. (2002).
 
@@ -8,21 +8,21 @@ of L'Ecuyer et al. (2002).
 
 ```julia
 using Pkg
-Pkg.add(url = "https://github.com/wirelessroom2/RandomDataStream.jl")
+Pkg.add(url = "https://github.com/wirelessroom2/RandomDataStreams.jl")
 ```
 
 or, from a local clone:
 
 ```julia
 using Pkg
-Pkg.develop(path = "path/to/RandomDataStream.jl")
+Pkg.develop(path = "path/to/RandomDataStreams.jl")
 ```
 
 Requirements: Julia ≥ 1.6. The only dependency is the standard library `Random`.
 
 ## Choosing a generator
 
-RandomDataStream.jl implements the full xoshiro/xoroshiro family of Blackman & Vigna plus
+RandomDataStreams.jl implements the full xoshiro/xoroshiro family of Blackman & Vigna plus
 L'Ecuyer's MRG32k3a. All variants of a xoshiro family share the same linear
 transition and jump constants; only the output scrambler differs.
 
@@ -44,7 +44,7 @@ See [Generator Comparison](comparison.md) for guidance and benchmarks.
 ## First numbers
 
 ```julia
-using RandomDataStream
+using RandomDataStreams
 
 rng = MRG32k3a()      # default seed [12345, ..., 12345]
 rand(rng)             # 0.12701112204657714
@@ -98,14 +98,14 @@ Random.seed!(rng, [7,7,7,8,8,8])   # explicit MRG32k3a seed (validated)
 
 ## Full Random API
 
-RandomDataStream generators are drop-in substitutes for Julia's built-in RNGs: anywhere a
-function accepts an `AbstractRNG`, you can pass an RandomDataStream generator and keep
+RandomDataStreams generators are drop-in substitutes for Julia's built-in RNGs: anywhere a
+function accepts an `AbstractRNG`, you can pass an RandomDataStreams generator and keep
 your stream/substream control.
 
 ```julia
-using RandomDataStream, Random
+using RandomDataStreams, Random
 
-rng = next_stream!(MRG32k3aGen())     # any RandomDataStream generator works here
+rng = next_stream!(MRG32k3aGen())     # any RandomDataStreams generator works here
 
 rand(rng, 5)                          # Vector{Float64}, 5 draws
 A = rand(rng, Float64, 2, 3)          # 2x3 matrix

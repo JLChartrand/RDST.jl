@@ -1,4 +1,4 @@
-# RandomDataStream.jl Documentation
+# RandomDataStreams.jl Documentation
 
 Streamable pseudo-random number generators for Julia:
 MRG32k3a (L'Ecuyer) and xoshiro256+ (Blackman & Vigna), with
@@ -15,7 +15,7 @@ non-overlapping streams and substreams.
 ## Quick example
 
 ```julia
-using RandomDataStream
+using RandomDataStreams
 
 gen  = MRG32k3aGen()
 rngA = next_stream!(gen)      # independent stream A

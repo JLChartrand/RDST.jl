@@ -20,7 +20,7 @@ checkseed
 ## Xoshiro / xoroshiro families
 
 ```@docs
-RandomDataStream.LinRNG
+RandomDataStreams.LinRNG
 Xoroshiro128p
 Xoroshiro128ss
 Xoroshiro128pp
@@ -35,7 +35,7 @@ Xoshiro512pp
 ### Stream generators
 
 ```@docs
-RandomDataStream.LinGen
+RandomDataStreams.LinGen
 Xoroshiro128pGen
 Xoroshiro128ssGen
 Xoroshiro128ppGen
@@ -51,11 +51,11 @@ Xoshiro512ppGen
 
 ```@docs
 rand(::MRG32k3a)
-rand(::RandomDataStream.LinRNG)
-rand(::RandomDataStream.LinRNG, ::Type{Float32})
-rand(::RandomDataStream.LinRNG, ::Type{Float16})
-rand(::RandomDataStream.LinRNG, ::UnitRange{Int64})
-rand(::MRG32k3a, ::RandomDataStream.Random.SamplerTrivial{RandomDataStream.Random.CloseOpen12_64})
+rand(::RandomDataStreams.LinRNG)
+rand(::RandomDataStreams.LinRNG, ::Type{Float32})
+rand(::RandomDataStreams.LinRNG, ::Type{Float16})
+rand(::RandomDataStreams.LinRNG, ::UnitRange{Int64})
+rand(::MRG32k3a, ::RandomDataStreams.Random.SamplerTrivial{RandomDataStreams.Random.CloseOpen12_64})
 short_jump!
 long_jump!
 advance_state!

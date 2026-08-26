@@ -1,4 +1,4 @@
-name = "RandomDataStream"
+name = "RandomDataStreams"
 uuid = "dc077566-edc2-11e8-0ce0-7d758bb9a5d1"
 authors = ["wirelessroom2 <jl_chartrand@hotmail.com>"]
 version = "0.1.0"

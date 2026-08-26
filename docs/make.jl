@@ -1,15 +1,15 @@
-using RandomDataStream
+using RandomDataStreams
 using Documenter
 
-DocMeta.setdocmeta!(RandomDataStream, :DocTestSetup, :(using RandomDataStream); recursive = true)
+DocMeta.setdocmeta!(RandomDataStreams, :DocTestSetup, :(using RandomDataStreams); recursive = true)
 
 makedocs(;
-    sitename = "RandomDataStream.jl",
-    modules = [RandomDataStream],
+    sitename = "RandomDataStreams.jl",
+    modules = [RandomDataStreams],
     checkdocs = :exports,
     format = Documenter.HTML(;
         prettyurls = get(ENV, "CI", nothing) == "true",
-        canonical = "https://jlchartrand.github.io/RandomDataStream.jl",
+        canonical = "https://jlchartrand.github.io/RandomDataStreams.jl",
         edit_link = "master",
     ),
     pages = [
@@ -26,7 +26,7 @@ makedocs(;
 
 if get(ENV, "CI", nothing) == "true"
     deploydocs(;
-        repo = "github.com/JLChartrand/RandomDataStream.jl.git",
+        repo = "github.com/JLChartrand/RandomDataStreams.jl.git",
         devbranch = "master",
     )
 end
