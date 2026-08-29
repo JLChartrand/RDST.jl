@@ -269,6 +269,28 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         # 64-bit draws pair two consecutive 32-bit words, low word first
         rng = next_stream!(PhiloxGen())
         @test RandomDataStreams.next(rng) == 0xe169c58d6627e8d5
+
+        # ... and the same vectors for Philox4x64-10
+        z64 = ntuple(_ -> UInt64(0), 4)
+        @test RandomDataStreams.philox(z64, (UInt64(0), UInt64(0))) ==
+              (0x16554d9eca36314c, 0xdb20fe9d672d0fdc,
+               0xd7e772cee186176b, 0x7e68b68aec7ba23b)
+
+        g = typemax(UInt64)
+        @test RandomDataStreams.philox((g, g, g, g), (g, g)) ==
+              (0x87b092c3013fe90b, 0x438c3c67be8d0224,
+               0x9cc7d7c69cd777b6, 0xa09caebf594f0ba0)
+
+        @test RandomDataStreams.philox((0x243f6a8885a308d3, 0x13198a2e03707344,
+                                        0xa4093822299f31d0, 0x082efa98ec4e6c89),
+                                       (0x452821e638d01377, 0xbe5466cf34e90c6c)) ==
+              (0xa528f45403e61d95, 0x38c72dbd566e9788,
+               0xa5a1610e72fd18b5, 0x57bd43b5e52b7fe6)
+
+        rng = next_stream!(Philox4x64Gen())
+        @test [rand(rng, UInt64) for _ in 1:4] ==
+              UInt64[0x16554d9eca36314c, 0xdb20fe9d672d0fdc,
+                     0xd7e772cee186176b, 0x7e68b68aec7ba23b]
     end
 
     @testset "Philox outputs" begin
@@ -326,20 +348,82 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         @test get_state(gen) == (UInt32(4), UInt32(5))
         @test get_state(next_stream!(gen))[2] == (UInt32(4), UInt32(5))
 
-        # advance_state! moves the counter by whole 128-bit blocks
-        r = PhiloxRNG()
-        advance_state!(r, 0, 5)
-        @test get_state(r)[1] == 5
-        advance_state!(r, 0, -5)
-        @test get_state(r)[1] == 0
-        advance_state!(r, 64, 0)
-        @test get_state(r)[1] == UInt128(1) << 64
+        # advance_state! counts draws of the native word, like the other
+        # generators of the package -- including across block boundaries
+        ref = [rand(next_stream!(PhiloxGen()), UInt32) for _ in 1:1]
+        base = let q = next_stream!(PhiloxGen()); [rand(q, UInt32) for _ in 1:20] end
+        @test ref[1] == base[1]
+        for n in (1, 3, 4, 5, 9)                   # a block holds 4 words
+            q = next_stream!(PhiloxGen())
+            advance_state!(q, 0, n)
+            @test [rand(q, UInt32) for _ in 1:3] == base[n+1:n+3]
+        end
+
+        q = next_stream!(PhiloxGen())              # backwards from mid-block
+        for _ in 1:7
+            rand(q, UInt32)
+        end
+        advance_state!(q, 0, -5)
+        @test [rand(q, UInt32) for _ in 1:2] == base[3:4]
+
+        q = next_stream!(PhiloxGen())              # a substream is 2^66 draws
+        advance_state!(q, 66, 0)
+        @test get_state(q)[1] == UInt128(1) << 64
 
         a = next_stream!(PhiloxGen())
         b = copy(a)
         @test rand(a) == rand(b)                          # copies are independent
         rand(b)
         @test rand(a) != rand(b)
+    end
+
+
+    @testset "counter-based variant matrix" begin
+        # every stream/state routine must behave identically for each variant
+        variants = [
+            (PhiloxRNG,     PhiloxGen,      UInt32, "Philox4x32-10"),
+            (Philox4x64RNG, Philox4x64Gen,  UInt64, "Philox4x64-10"),
+        ]
+        for (T, G, W, name) in variants
+            gen = G()
+            s1 = next_stream!(gen)
+            s2 = next_stream!(gen)
+            @test s1 isa T && s1 isa AbstractRNG
+            @test get_state(s1)[2] != get_state(s2)[2]
+            @test isempty(intersect([rand(s1) for _ in 1:100], [rand(s2) for _ in 1:100]))
+
+            r = T()
+            v1 = rand(r, W)
+            next_substream!(r)
+            @test get_state(r)[1] == UInt128(1) << 64
+            w1 = rand(r, W)
+            rand(r, W)
+            reset_substream!(r)
+            @test rand(r, W) == w1
+            reset_stream!(r)
+            @test rand(r, W) == v1
+
+            srand!(r, W[3, 4])
+            @test get_state(r)[2] == (W(3), W(4))
+            @test_throws ArgumentError srand!(r, W[1, 2, 3])
+
+            srand!(gen, W[9, 9])
+            @test get_state(gen) == (W(9), W(9))
+            @test get_state(next_stream!(gen))[2] == (W(9), W(9))
+
+            a = T(); b = copy(a)
+            @test rand(a) == rand(b)
+            rand(b)
+            @test rand(a) != rand(b)
+
+            y = T(); z = T()
+            Random.seed!(y, 987); Random.seed!(z, 987)
+            @test [rand(y) for _ in 1:20] == [rand(z) for _ in 1:20]
+
+            io = IOBuffer()
+            show(io, T()); @test occursin(name, String(take!(io)))
+            show(io, G()); @test occursin(name, String(take!(io)))
+        end
     end
 
     @testset "show methods" begin
@@ -542,6 +626,7 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
             () -> Xoroshiro128ss(fill(UInt64(42), 2)),
             () -> Xoshiro512p(fill(UInt64(42), 8)),
             () -> next_stream!(PhiloxGen()),
+            () -> next_stream!(Philox4x64Gen()),
         ]
         for mkm in mk
             r = mkm()

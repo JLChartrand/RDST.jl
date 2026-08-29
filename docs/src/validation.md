@@ -4,7 +4,7 @@
 
 ## Continuous Integration (SmallCrush)
 
-A subset of the TestU01 batteries, **SmallCrush**, is automatically executed on all supported generators (`MRG32k3a`, `Xoshiro256+`, and `Philox`) during the standard test suite. You can trigger this locally by running:
+A subset of the TestU01 batteries, **SmallCrush**, is automatically executed on all supported generators (`MRG32k3a`, `Xoshiro256+`, `Philox4x32-10` and `Philox4x64-10`) during the standard test suite. You can trigger this locally by running:
 
 ```julia
 using Pkg

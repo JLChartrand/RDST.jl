@@ -27,7 +27,8 @@ transition and jump constants; only the output scrambler differs.
 
 | Type | Family | State | Period | Scrambler |
 |---|---|---|---|---|
-| `PhiloxRNG` | Philox | 128-bit counter | 2^128 | Feistel Network |
+| `PhiloxRNG` | Philox4x32-10 | 128-bit counter | 2^130 | Feistel-like network |
+| `Philox4x64RNG` | Philox4x64-10 | 128-bit counter | 2^130 | Feistel-like network |
 | `Xoroshiro128p` | xoroshiro128 | 128 bits | 2^128 − 1 | `s0 + s1` |
 | `Xoroshiro128ss` | xoroshiro128 | 128 bits | 2^128 − 1 | high bits, `**` |
 | `Xoroshiro128pp` | xoroshiro128 | 128 bits | 2^128 − 1 | high bits, `++` |

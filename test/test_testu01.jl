@@ -9,7 +9,8 @@ using RNGTest
     generators = [
         ("MRG32k3a", MRG32k3aGen),
         ("Xoshiro256+", () -> Xoshiro256plusGen([0x01, 0x02, 0x03, 0x04])),
-        ("Philox", PhiloxGen)
+        ("Philox4x32-10", PhiloxGen),
+        ("Philox4x64-10", Philox4x64Gen)
     ]
 
     for (name, gen_init) in generators

@@ -24,7 +24,8 @@ include("mrg32k3a/main.jl")
 include("xoshiro/xos256p.jl")
 include("xoshiro/xoshiro256plus_types.jl")
 
-###standard Random.seed! interface for every generator
+###counter-based generators (Salmon, Moraes, Dror & Shaw)
+include("cbrng/cbrng.jl")
 include("philox/philox.jl")
 
 ###standard Random.seed! interface for every generator
@@ -39,5 +40,7 @@ export Xoroshiro128p, Xoroshiro128ss, Xoroshiro128pp,
 
 
 
-export PhiloxGen, PhiloxRNG
+export CBRNG, CBGen
+export PhiloxRNG, PhiloxGen
+export Philox4x64RNG, Philox4x64Gen
 end # module

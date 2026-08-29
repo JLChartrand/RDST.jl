@@ -67,16 +67,16 @@ function Random.seed!(rng::MRG32k3a, seed::AbstractVector{<:Integer})
 end
 
 """
-    Random.seed!(rng::PhiloxRNG, seed::Integer) -> rng
-    Random.seed!(rng::PhiloxRNG, seed::AbstractVector{<:Integer}) -> rng
+    Random.seed!(rng::CBRNG, seed::Integer) -> rng
+    Random.seed!(rng::CBRNG, seed::AbstractVector{<:Integer}) -> rng
 
-Re-seed the stream: the seed selects the Philox key and the counter is rewound
-to the beginning of the stream. Integer seeds are expanded through splitmix64;
-vector seeds must hold exactly the two 32-bit key words.
+Re-seed a counter-based stream: the seed selects the key and the counter is
+rewound to the beginning of the stream. Integer seeds are expanded through
+splitmix64; vector seeds must hold exactly the key words.
 """
-function Random.seed!(rng::PhiloxRNG, seed::Integer)
-    w = _splitmix_words(UInt64(seed), 1)[1]
-    return srand!(rng, ((w >>> 32) % UInt32, w % UInt32))
+function Random.seed!(rng::CBRNG{B,W,N,K}, seed::Integer) where {B,W,N,K}
+    ws = _splitmix_words(UInt64(seed), K)
+    return srand!(rng, NTuple{K,W}([w % W for w in ws]))
 end
 
-Random.seed!(rng::PhiloxRNG, seed::AbstractVector{<:Integer}) = srand!(rng, seed)
+Random.seed!(rng::CBRNG, seed::AbstractVector{<:Integer}) = srand!(rng, seed)

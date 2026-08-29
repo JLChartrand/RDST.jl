@@ -47,6 +47,12 @@ Xoshiro512ssGen
 Xoshiro512ppGen
 ```
 
+## Counter-based generators
+
+```@docs
+RandomDataStreams.CBGen
+```
+
 ### Functions
 
 ```@docs
@@ -55,6 +61,9 @@ rand(::RandomDataStreams.LinRNG)
 rand(::RandomDataStreams.LinRNG, ::Type{Float32})
 rand(::RandomDataStreams.LinRNG, ::Type{Float16})
 rand(::RandomDataStreams.LinRNG, ::UnitRange{Int64})
+rand(::RandomDataStreams.CBRNG)
+rand(::RandomDataStreams.CBRNG, ::Type{Float32})
+rand(::RandomDataStreams.CBRNG, ::Type{Float16})
 rand(::MRG32k3a, ::RandomDataStreams.Random.SamplerTrivial{RandomDataStreams.Random.CloseOpen12_64})
 short_jump!
 long_jump!

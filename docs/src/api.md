@@ -181,9 +181,22 @@ byte-for-byte against the original C implementations.
 | `get_state` | yes | yes |
 | `next_stream!` (via Gen) | yes | yes |
 
-## Philox
+## Counter-based generators
+
+A counter-based RNG produces its output block as a keyed bijection of a
+counter, `R = b_K(C)`, rather than by iterating a state transition. `CBRNG`
+holds the machinery every such family shares — counter, key, block buffer,
+streams and substreams — so a variant only supplies its bijection.
+
+```@docs
+CBRNG
+```
+
+### Philox
 
 ```@docs
 PhiloxGen
 PhiloxRNG
+Philox4x64Gen
+Philox4x64RNG
 ```

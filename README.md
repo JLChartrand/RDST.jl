@@ -18,7 +18,7 @@ Three generator families are provided:
 |-------------|---------------|------|----------------------|----------------|
 | **MRG32k3a** | `MRG32k3a` | ≈ 2^191 | `Float64` | matrix jumps (L'Ecuyer) |
 | **xoshiro/xoroshiro** | `Xoroshiro128p/ss/pp`, `Xoshiro256p/ss/pp`, `Xoshiro512p/ss/pp` | 2^128 – 2^512 | `UInt64` | Vigna's jump polynomials |
-| **Philox** | `PhiloxRNG` | 2^128 | `UInt64` | counter increments (Salmon et al.) |
+| **Philox** | `PhiloxRNG` (4x32-10), `Philox4x64RNG` (4x64-10) | 2^130 | `UInt32` / `UInt64` | distinct keys / counter jumps (Salmon et al.) |
 
 All xoshiro/xoroshiro variants are validated byte-for-byte against the
 original C implementations from [xoshiro.di.unimi.it](http://xoshiro.di.unimi.it).
@@ -71,11 +71,15 @@ rand(rng, 1:10)              # random number in 1:10
 ```julia
 using RandomDataStreams
 
-gen = PhiloxGen()
+gen = PhiloxGen()            # Philox4x32-10
 rng = next_stream!(gen)
 
 rand(rng)                    # Float64 in [0, 1)
+rand(rng, UInt32)            # one 32-bit word of the current block
 rand(rng, UInt64)            # raw 64-bit unsigned integer
+
+gen64 = Philox4x64Gen()      # Philox4x64-10: 64-bit words, no bit assembly
+rand(next_stream!(gen64), UInt64)
 ```
 
 ### Xoshiro256+
