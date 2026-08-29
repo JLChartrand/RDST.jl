@@ -245,6 +245,103 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         @test_throws ArgumentError Xoshiro256plusGen(UInt64[1, 2, 3])
     end
 
+
+    @testset "Philox reference values" begin
+        # Known-answer tests from the Random123 reference implementation
+        # (Salmon, Moraes, Dror & Shaw, SC 2011), Philox4x32-10.
+        z = ntuple(_ -> UInt32(0), 4)
+        @test RandomDataStreams.philox(z, (UInt32(0), UInt32(0))) ==
+              (0x6627e8d5, 0xe169c58d, 0xbc57ac4c, 0x9b00dbd8)
+
+        f = typemax(UInt32)
+        @test RandomDataStreams.philox((f, f, f, f), (f, f)) ==
+              (0x408f276d, 0x41c83b0e, 0xa20bc7c6, 0x6d5451fd)
+
+        @test RandomDataStreams.philox((0x243f6a88, 0x85a308d3, 0x13198a2e, 0x03707344),
+                                       (0xa4093822, 0x299f31d0)) ==
+              (0xd16cfe09, 0x94fdcceb, 0x5001e420, 0x24126ea1)
+
+        # the RNG wrapper must hand out those same words, in order
+        rng = next_stream!(PhiloxGen())
+        @test [rand(rng, UInt32) for _ in 1:4] ==
+              UInt32[0x6627e8d5, 0xe169c58d, 0xbc57ac4c, 0x9b00dbd8]
+
+        # 64-bit draws pair two consecutive 32-bit words, low word first
+        rng = next_stream!(PhiloxGen())
+        @test RandomDataStreams.next(rng) == 0xe169c58d6627e8d5
+    end
+
+    @testset "Philox outputs" begin
+        rng = next_stream!(PhiloxGen())
+        v = [rand(rng) for _ in 1:10_000]
+        @test all(0 .<= v .< 1)
+        @test 0.48 < sum(v) / length(v) < 0.52
+
+        rng = next_stream!(PhiloxGen())
+        w = [rand(rng, 1:10) for _ in 1:10_000]
+        @test all(1 .<= w .<= 10)
+        @test count(==(1), w) > 500 && count(==(10), w) > 500
+
+        # all four words of a block are consumed before the counter moves on
+        rng = next_stream!(PhiloxGen())
+        for _ in 1:4
+            rand(rng, UInt32)
+        end
+        @test get_state(rng)[1] == 1
+    end
+
+    @testset "Philox streams & substreams" begin
+        gen = PhiloxGen()
+        s1 = next_stream!(gen)
+        s2 = next_stream!(gen)
+        @test get_state(s1)[2] != get_state(s2)[2]        # distinct keys
+        @test isempty(intersect([rand(s1) for _ in 1:100], [rand(s2) for _ in 1:100]))
+
+        # a substream is a jump of 2^64 blocks in the counter
+        reset_stream!(s1)
+        v1 = rand(s1, UInt32)
+        next_substream!(s1)
+        @test get_state(s1)[1] == UInt128(1) << 64
+        w1 = rand(s1, UInt32)
+        @test v1 != w1
+
+        rand(s1, UInt32)
+        reset_substream!(s1)
+        @test rand(s1, UInt32) == w1                      # start of the substream
+        reset_stream!(s1)
+        @test rand(s1, UInt32) == v1                      # start of the stream
+    end
+
+    @testset "Philox state" begin
+        rng = PhiloxRNG((UInt32(3), UInt32(7)))
+        ctr, key, _, idx = get_state(rng)
+        @test ctr == 0 && key == (UInt32(3), UInt32(7)) && idx == 5
+
+        srand!(rng, UInt32[1, 2])
+        @test get_state(rng)[2] == (UInt32(1), UInt32(2))
+        @test_throws ArgumentError srand!(rng, UInt32[1, 2, 3])
+
+        gen = PhiloxGen()
+        srand!(gen, UInt32[4, 5])
+        @test get_state(gen) == (UInt32(4), UInt32(5))
+        @test get_state(next_stream!(gen))[2] == (UInt32(4), UInt32(5))
+
+        # advance_state! moves the counter by whole 128-bit blocks
+        r = PhiloxRNG()
+        advance_state!(r, 0, 5)
+        @test get_state(r)[1] == 5
+        advance_state!(r, 0, -5)
+        @test get_state(r)[1] == 0
+        advance_state!(r, 64, 0)
+        @test get_state(r)[1] == UInt128(1) << 64
+
+        a = next_stream!(PhiloxGen())
+        b = copy(a)
+        @test rand(a) == rand(b)                          # copies are independent
+        rand(b)
+        @test rand(a) != rand(b)
+    end
+
     @testset "show methods" begin
         io = IOBuffer()
         show(io, MRG32k3a())
@@ -255,6 +352,10 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         @test occursin("Xoshiro256plus", String(take!(io)))
         show(io, Xoshiro256plusGen(UInt64[1, 2, 3, 4]))
         @test occursin("Xoshiro256plus", String(take!(io)))
+        show(io, PhiloxRNG())
+        @test occursin("Philox", String(take!(io)))
+        show(io, PhiloxGen())
+        @test occursin("Philox", String(take!(io)))
     end
 
     @testset "Random API integration" begin
@@ -440,6 +541,7 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
             () -> Xoshiro256pp(fill(UInt64(42), 4)),
             () -> Xoroshiro128ss(fill(UInt64(42), 2)),
             () -> Xoshiro512p(fill(UInt64(42), 8)),
+            () -> next_stream!(PhiloxGen()),
         ]
         for mkm in mk
             r = mkm()
@@ -464,6 +566,7 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         for (mka, seed) in (
             (() -> MRG32k3a(), 12345),
             (() -> Xoshiro256pp(fill(UInt64(0), 4)), 6789),
+            (() -> PhiloxRNG(), 6789),
         )
             r1 = mka(); r2 = mka()
             Random.seed!(r1, seed); Random.seed!(r2, seed)

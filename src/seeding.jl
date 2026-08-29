@@ -65,3 +65,18 @@ function Random.seed!(rng::MRG32k3a, seed::AbstractVector{<:Integer})
     rng.Cg[:] = rng.Bg[:] = rng.Ig[:] = s
     return rng
 end
+
+"""
+    Random.seed!(rng::PhiloxRNG, seed::Integer) -> rng
+    Random.seed!(rng::PhiloxRNG, seed::AbstractVector{<:Integer}) -> rng
+
+Re-seed the stream: the seed selects the Philox key and the counter is rewound
+to the beginning of the stream. Integer seeds are expanded through splitmix64;
+vector seeds must hold exactly the two 32-bit key words.
+"""
+function Random.seed!(rng::PhiloxRNG, seed::Integer)
+    w = _splitmix_words(UInt64(seed), 1)[1]
+    return srand!(rng, ((w >>> 32) % UInt32, w % UInt32))
+end
+
+Random.seed!(rng::PhiloxRNG, seed::AbstractVector{<:Integer}) = srand!(rng, seed)
