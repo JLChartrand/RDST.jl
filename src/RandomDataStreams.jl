@@ -25,6 +25,9 @@ include("xoshiro/xos256p.jl")
 include("xoshiro/xoshiro256plus_types.jl")
 
 ###standard Random.seed! interface for every generator
+include("philox/philox.jl")
+
+###standard Random.seed! interface for every generator
 include("seeding.jl")
 
 export Xoroshiro128p, Xoroshiro128ss, Xoroshiro128pp,
@@ -34,4 +37,7 @@ export Xoroshiro128p, Xoroshiro128ss, Xoroshiro128pp,
        Xoshiro256plusGen, Xoshiro256ssGen, Xoshiro256ppGen,
        Xoshiro512pGen, Xoshiro512ssGen, Xoshiro512ppGen
 
+
+
+export PhiloxGen, PhiloxRNG
 end # module
