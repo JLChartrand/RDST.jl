@@ -17,7 +17,7 @@ function run_bigcrush()
 
     generators = [
         ("MRG32k3a", MRG32k3aGen),
-        ("Xoshiro256+", () -> Xoshiro256plusGen()),
+        ("Xoshiro256+", () -> Xoshiro256plusGen([0x01, 0x02, 0x03, 0x04])),
         ("Philox", PhiloxGen)
     ]
 
