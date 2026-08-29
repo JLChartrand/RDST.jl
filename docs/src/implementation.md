@@ -118,6 +118,14 @@ This is the state `(k, i, j)` of L'Ecuyer et al. (2021, Sec. 3), with
 `f(k, i, j) = (k, i + I[j = d-1], (j + 1) mod d)` and `d = N`. A variant only
 supplies `bijection(::Val{B}, ctr, key)`.
 
+Two families are built on it. **Philox** keeps both halves of a fixed-constant
+multiplication and xors the high halves into the other words, with a Weyl
+sequence for the round key. **Threefry** is a reduction of the Threefish cipher
+used in Skein and contains no multiplication at all — add, rotate, xor only —
+so it is reproducible bit-for-bit on any architecture and, per Salmon et al.
+(2011), the fastest of the family on CPUs without AES-NI. Adding it required
+only its bijection and its aliases: 120 lines, no stream machinery.
+
 **Streams** are keys. **Substreams** partition the counter, following the same
 paper: "one can use the `c0 < c` most significant bits of the counter to
 determine the substream, and the remaining `c1 = c - c0` bits for the position

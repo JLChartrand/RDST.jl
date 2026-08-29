@@ -202,3 +202,17 @@ PhiloxRNG
 Philox4x64Gen
 Philox4x64RNG
 ```
+
+### Threefry
+
+Same construction as Philox, with no multiplication at all: every round is
+add / rotate / xor, which makes Threefry reproducible bit-for-bit across
+architectures and, per Salmon et al. (2011), the fastest of the family on CPUs
+without AES-NI. Twenty rounds is their recommendation there.
+
+```@docs
+Threefry4x64Gen
+Threefry4x64RNG
+Threefry4x32Gen
+Threefry4x32RNG
+```

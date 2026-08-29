@@ -382,13 +382,65 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
     end
 
 
+
+    @testset "Threefry reference values" begin
+        # Known-answer tests from the Random123 reference implementation
+        # (Salmon, Moraes, Dror & Shaw, SC 2011), Threefry-4x-20.
+        z32 = ntuple(_ -> UInt32(0), 4)
+        @test RandomDataStreams.threefry(z32, z32) ==
+              (0x9c6ca96a, 0xe17eae66, 0xfc10ecd4, 0x5256a7d8)
+
+        f = typemax(UInt32)
+        @test RandomDataStreams.threefry((f, f, f, f), (f, f, f, f)) ==
+              (0x2a881696, 0x57012287, 0xf6c7446e, 0xa16a6732)
+
+        @test RandomDataStreams.threefry((0x243f6a88, 0x85a308d3, 0x13198a2e, 0x03707344),
+                                         (0xa4093822, 0x299f31d0, 0x082efa98, 0xec4e6c89)) ==
+              (0x59cd1dbb, 0xb8879579, 0x86b5d00c, 0xac8b6d84)
+
+        z64 = ntuple(_ -> UInt64(0), 4)
+        @test RandomDataStreams.threefry(z64, z64) ==
+              (0x09218ebde6c85537, 0x55941f5266d86105,
+               0x4bd25e16282434dc, 0xee29ec846bd2e40b)
+
+        g = typemax(UInt64)
+        @test RandomDataStreams.threefry((g, g, g, g), (g, g, g, g)) ==
+              (0x29c24097942bba1b, 0x0371bbfb0f6f4e11,
+               0x3c231ffa33f83a1c, 0xcd29113fde32d168)
+
+        @test RandomDataStreams.threefry((0x243f6a8885a308d3, 0x13198a2e03707344,
+                                          0xa4093822299f31d0, 0x082efa98ec4e6c89),
+                                         (0x452821e638d01377, 0xbe5466cf34e90c6c,
+                                          0xbe5466cf34e90c6c, 0xc0ac29b7c97c50dd)) ==
+              (0xa7e8fde591651bd9, 0xbaafd0c30138319b,
+               0x84a5c1a729e685b9, 0x901d406ccebc1ba4)
+
+        # the RNG wrappers must hand out those same words, in order
+        rng = next_stream!(Threefry4x64Gen())
+        @test [rand(rng, UInt64) for _ in 1:4] ==
+              UInt64[0x09218ebde6c85537, 0x55941f5266d86105,
+                     0x4bd25e16282434dc, 0xee29ec846bd2e40b]
+
+        rng = next_stream!(Threefry4x32Gen())
+        @test [rand(rng, UInt32) for _ in 1:4] ==
+              UInt32[0x9c6ca96a, 0xe17eae66, 0xfc10ecd4, 0x5256a7d8]
+
+        # no multiplication anywhere: the key schedule is pure xor
+        @test RandomDataStreams._threefry_ks((UInt32(1), UInt32(2), UInt32(4), UInt32(8)))[5] ==
+              UInt32(1) ⊻ UInt32(2) ⊻ UInt32(4) ⊻ UInt32(8) ⊻ 0x1BD11BDA
+    end
+
     @testset "counter-based variant matrix" begin
         # every stream/state routine must behave identically for each variant
         variants = [
-            (PhiloxRNG,     PhiloxGen,      UInt32, "Philox4x32-10"),
-            (Philox4x64RNG, Philox4x64Gen,  UInt64, "Philox4x64-10"),
+            (PhiloxRNG,       PhiloxGen,       UInt32, 2, "Philox4x32-10"),
+            (Philox4x64RNG,   Philox4x64Gen,   UInt64, 2, "Philox4x64-10"),
+            (Threefry4x32RNG, Threefry4x32Gen, UInt32, 4, "Threefry4x32-20"),
+            (Threefry4x64RNG, Threefry4x64Gen, UInt64, 4, "Threefry4x64-20"),
         ]
-        for (T, G, W, name) in variants
+        for (T, G, W, K, name) in variants
+            key = W[3 + i for i in 1:K]
+            toolong = W[1 for _ in 1:(K + 1)]
             gen = G()
             s1 = next_stream!(gen)
             s2 = next_stream!(gen)
@@ -407,13 +459,13 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
             reset_stream!(r)
             @test rand(r, W) == v1
 
-            srand!(r, W[3, 4])
-            @test get_state(r)[2] == (W(3), W(4))
-            @test_throws ArgumentError srand!(r, W[1, 2, 3])
+            srand!(r, key)
+            @test get_state(r)[2] == NTuple{K,W}(key)
+            @test_throws ArgumentError srand!(r, toolong)
 
-            srand!(gen, W[9, 9])
-            @test get_state(gen) == (W(9), W(9))
-            @test get_state(next_stream!(gen))[2] == (W(9), W(9))
+            srand!(gen, key)
+            @test get_state(gen) == NTuple{K,W}(key)
+            @test get_state(next_stream!(gen))[2] == NTuple{K,W}(key)
 
             a = T(); b = copy(a)
             @test rand(a) == rand(b)
@@ -441,6 +493,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
             ("Xoroshiro128ss",() -> Xoroshiro128ss(fill(UInt64(42), 2)), UInt64[5, 6]),
             ("Philox4x32-10", () -> next_stream!(PhiloxGen()), UInt32[3, 4]),
             ("Philox4x64-10", () -> next_stream!(Philox4x64Gen()), UInt64[3, 4]),
+            ("Threefry4x64-20", () -> next_stream!(Threefry4x64Gen()), UInt64[3, 4, 5, 6]),
+            ("Threefry4x32-20", () -> next_stream!(Threefry4x32Gen()), UInt32[3, 4, 5, 6]),
         ]
         for (name, mk, seed) in makers
             @testset "$name" begin
@@ -687,6 +741,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
             () -> Xoshiro512p(fill(UInt64(42), 8)),
             () -> next_stream!(PhiloxGen()),
             () -> next_stream!(Philox4x64Gen()),
+            () -> next_stream!(Threefry4x64Gen()),
+            () -> next_stream!(Threefry4x32Gen()),
         ]
         for mkm in mk
             r = mkm()

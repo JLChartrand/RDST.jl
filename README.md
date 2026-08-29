@@ -12,13 +12,14 @@ RandomDataStreams (Random Data Streams) provides random number generators (RNGs)
 This is a key requirement for stochastic simulation, parallel Monte Carlo, and
 reproducible variance-reduction techniques such as common random numbers.
 
-Three generator families are provided:
+Four generator families are provided:
 
 | Family | Variants | Period | Native output | Streams / substreams |
 |-------------|---------------|------|----------------------|----------------|
 | **MRG32k3a** | `MRG32k3a` | ≈ 2^191 | `Float64` | matrix jumps (L'Ecuyer) |
 | **xoshiro/xoroshiro** | `Xoroshiro128p/ss/pp`, `Xoshiro256p/ss/pp`, `Xoshiro512p/ss/pp` | 2^128 – 2^512 | `UInt64` | Vigna's jump polynomials |
 | **Philox** | `PhiloxRNG` (4x32-10), `Philox4x64RNG` (4x64-10) | 2^130 | `UInt32` / `UInt64` | distinct keys / counter jumps (Salmon et al.) |
+| **Threefry** | `Threefry4x64RNG` (4x64-20), `Threefry4x32RNG` (4x32-20) | 2^130 | `UInt64` / `UInt32` | distinct keys / counter jumps (Salmon et al.) |
 
 All xoshiro/xoroshiro variants are validated byte-for-byte against the
 original C implementations from [xoshiro.di.unimi.it](http://xoshiro.di.unimi.it).
@@ -80,6 +81,18 @@ rand(rng, UInt64)            # raw 64-bit unsigned integer
 
 gen64 = Philox4x64Gen()      # Philox4x64-10: 64-bit words, no bit assembly
 rand(next_stream!(gen64), UInt64)
+```
+
+### Threefry
+
+```julia
+using RandomDataStreams
+
+gen = Threefry4x64Gen()      # Threefry4x64-20, recommended on CPUs
+rng = next_stream!(gen)
+
+rand(rng)                    # Float64 in [0, 1)
+rand(rng, UInt64)            # raw 64-bit unsigned integer
 ```
 
 ### Xoshiro256+
@@ -165,7 +178,7 @@ Full documentation lives in [`docs/`](docs/) and as a PDF in
 ### xoshiro / xoroshiro
 - Blackman, D., & Vigna, S. (2021). *Scrambled Linear Pseudorandom Number Generators*. ACM Transactions on Mathematical Software, 47(4), 1-32.
 
-### Philox
+### Philox & Threefry
 - Salmon, J. K., Moraes, M. A., Dror, R. O., & Shaw, D. E. (2011). *Parallel random numbers: as easy as 1, 2, 3*. SC '11: Proceedings of 2011 International Conference for High Performance Computing, Networking, Storage and Analysis.
 
 ## License

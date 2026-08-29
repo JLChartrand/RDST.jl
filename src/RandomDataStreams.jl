@@ -27,6 +27,7 @@ include("xoshiro/xoshiro256plus_types.jl")
 ###counter-based generators (Salmon, Moraes, Dror & Shaw)
 include("cbrng/cbrng.jl")
 include("philox/philox.jl")
+include("threefry/threefry.jl")
 
 ###standard Random.seed! interface for every generator
 include("seeding.jl")
@@ -43,4 +44,5 @@ export Xoroshiro128p, Xoroshiro128ss, Xoroshiro128pp,
 export CBRNG, CBGen
 export PhiloxRNG, PhiloxGen
 export Philox4x64RNG, Philox4x64Gen
+export Threefry4x64RNG, Threefry4x64Gen, Threefry4x32RNG, Threefry4x32Gen
 end # module

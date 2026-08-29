@@ -4,7 +4,7 @@
 
 ## Continuous Integration (SmallCrush)
 
-A subset of the TestU01 batteries, **SmallCrush**, is automatically executed on all supported generators (`MRG32k3a`, `Xoshiro256+`, `Philox4x32-10` and `Philox4x64-10`) during the standard test suite. You can trigger this locally by running:
+A subset of the TestU01 batteries, **SmallCrush**, is automatically executed on all supported generators (`MRG32k3a`, `Xoshiro256+`, `Philox4x32-10`, `Philox4x64-10`, `Threefry4x64-20` and `Threefry4x32-20`) during the standard test suite. You can trigger this locally by running:
 
 ```julia
 using Pkg
@@ -19,7 +19,7 @@ also important to test the dependence between those streams [...] one can
 construct sequences that take a few values from each stream for a certain
 number of streams, in a round-robin fashion" — the test suite also runs
 SmallCrush on a sequence built by interleaving 64 streams, one value at a time,
-for each of the four generators. For a counter-based generator this is what
+for each of the six generators. For a counter-based generator this is what
 exercises the key schedule: a schedule handing out structurally related keys
 shows up here and not in a battery run on a single stream.
 
