@@ -189,6 +189,21 @@ most recently produced and the position of the next word to consume in it.
 get_state(rng::CBRNG) = (rng.ctr, rng.key, rng.buffer, rng.idx)
 
 """
+    set_state!(rng::CBRNG, state) -> rng
+
+Restores the current position of the stream from a `get_state(rng)` value: the
+counter, the key, the buffered block and the index within it.
+"""
+function set_state!(rng::CBRNG{B,W,N,K}, state) where {B,W,N,K}
+    ctr, key, buffer, idx = state
+    rng.ctr = UInt128(ctr)
+    rng.key = NTuple{K,W}(key)
+    rng.buffer = NTuple{N,W}(buffer)
+    rng.idx = Int(idx)
+    return rng
+end
+
+"""
     srand!(rng::CBRNG, key) -> rng
 
 Reseeds the stream with `key` (a tuple or a vector of key words) and rewinds
@@ -210,10 +225,11 @@ if e > 0, let n = 2^e + c;
 if e < 0, let n = -2^(-e) + c;
 if e = 0, let n = c.
 
-The unit is one word of the generator's native type, matching the other
-generators of the package; a whole block is `N` words. The distance is reduced
-modulo the counter space, so any magnitude is accepted. The stream and
-substream boundaries are not affected, only the current position.
+The unit is one `rand(rng)` draw, the same as for every other generator of the
+package. A draw takes 64 bits, so it consumes two words of a 32-bit family and
+one word of a 64-bit one. The distance is reduced modulo the counter space, so
+any magnitude is accepted. The stream and substream boundaries are not
+affected, only the current position.
 """
 function advance_state!(rng::CBRNG{B,W,N,K}, e::Integer, c::Integer) where {B,W,N,K}
     n = if e == 0
@@ -223,6 +239,8 @@ function advance_state!(rng::CBRNG{B,W,N,K}, e::Integer, c::Integer) where {B,W,
     else
         -BigInt(2)^BigInt(-e) + BigInt(c)
     end
+
+    n *= 8 ÷ sizeof(W)                   # draws -> words: 64 bits per draw
 
     # `ctr` points at the next block, so a loaded buffer sits one block behind.
     pos = rng.idx > N ? BigInt(rng.ctr) * N : (BigInt(rng.ctr) - 1) * N + (rng.idx - 1)
@@ -251,31 +269,56 @@ end
 
 Hands out independent [`CBRNG`](@ref) streams, each with its own key. Concrete
 aliases (`PhiloxGen`, `Philox4x64Gen`, ...) are what user code normally names.
+
+The generator walks an odometer over the *seeds* `0, 1, 2, ...` and maps each
+one through the family's key schedule [`stream_key`](@ref) to obtain the actual
+key; see that function for why the two are not the same thing.
 """
 mutable struct CBGen{B,W,N,K} <: AbstractRNGStream
-    nextKey::NTuple{K,W}
+    nextSeed::NTuple{K,W}
 end
 
 CBGen{B,W,N,K}() where {B,W,N,K} = CBGen{B,W,N,K}(ntuple(_ -> zero(W), Val(K)))
-CBGen{B,W,N,K}(key::AbstractVector{<:Integer}) where {B,W,N,K} =
-    CBGen{B,W,N,K}(_key_tuple(CBRNG{B,W,N,K}, key))
+CBGen{B,W,N,K}(seed::AbstractVector{<:Integer}) where {B,W,N,K} =
+    CBGen{B,W,N,K}(_key_tuple(CBRNG{B,W,N,K}, seed))
+
+"""
+    stream_key(::Val{B}, seed) -> key
+
+Key schedule of the family `B`: the bijection mapping the seed of a stream —
+the position `0, 1, 2, ...` walked by [`CBGen`](@ref), or a value the user
+supplied through `srand!` — to the key the bijection is actually keyed with.
+
+The default is the identity, which is what Philox uses: L'Ecuyer et al. (2021,
+Sec. 3) report that consecutive small keys are safe there, on the strength of
+the statistical testing of Salmon et al. (2011) and the ten rounds of encoding.
+
+A family whose bijection is weak for structured keys **must** override this
+method with a schedule that hashes the seed. The paper's worked example is
+Squares (Widynski 2020): key `0` makes the output identically zero, and a small
+key `k` makes roughly the first `2^16 / k` outputs zero, so handing out the
+seeds `1, 2, ..., s` as keys "will be very bad unless the keys are hashed to
+random-looking values by another mechanism".
+"""
+stream_key(::Val, seed::NTuple{K,W}) where {K,W} = seed
 
 """
     next_stream!(gen) -> rng
 
-Returns the next independent stream and moves the generator on to the
-following key. Keys are handed out in lexicographic order, so distinct streams
-never share a key and their counter spaces cannot overlap.
+Returns the next independent stream and moves the generator on to the following
+seed. Seeds are walked in lexicographic order and mapped through
+[`stream_key`](@ref), a bijection, so distinct streams never share a key and
+their counter spaces cannot overlap.
 """
 function next_stream!(gen::CBGen{B,W,N,K}) where {B,W,N,K}
-    key = gen.nextKey
-    gen.nextKey = _increment_key(key)
-    return CBRNG{B,W,N,K}(key)
+    seed = gen.nextSeed
+    gen.nextSeed = _increment_seed(seed)
+    return CBRNG{B,W,N,K}(stream_key(Val(B), seed))
 end
 
-# Odometer increment over the key words, least significant word first.
-@inline function _increment_key(key::NTuple{K,W}) where {K,W}
-    words = collect(key)
+# Odometer increment over the seed words, least significant word last.
+@inline function _increment_seed(seed::NTuple{K,W}) where {K,W}
+    words = collect(seed)
     for i in K:-1:1
         words[i] += one(W)
         words[i] == zero(W) || break     # no carry out of this word
@@ -286,24 +329,33 @@ end
 """
     get_state(gen::CBGen) -> NTuple{K,W}
 
-Key that will be used by the next `next_stream!` call.
+Seed that the next `next_stream!` call will use. This is the position in the
+key schedule, not the key itself; the two coincide only when
+[`stream_key`](@ref) is the identity.
 """
-get_state(gen::CBGen) = gen.nextKey
+get_state(gen::CBGen) = gen.nextSeed
 
 """
-    srand!(gen::CBGen, key) -> gen
+    srand!(gen::CBGen, seed) -> gen
 
-Resets the key that the next `next_stream!` call will hand out.
+Resets the seed that the next `next_stream!` call will use.
 """
-function srand!(gen::CBGen{B,W,N,K}, key::NTuple{K,W}) where {B,W,N,K}
-    gen.nextKey = key
+function srand!(gen::CBGen{B,W,N,K}, seed::NTuple{K,W}) where {B,W,N,K}
+    gen.nextSeed = seed
     return gen
 end
 
-srand!(gen::CBGen{B,W,N,K}, key::AbstractVector{<:Integer}) where {B,W,N,K} =
-    srand!(gen, _key_tuple(CBRNG{B,W,N,K}, key))
+srand!(gen::CBGen{B,W,N,K}, seed::AbstractVector{<:Integer}) where {B,W,N,K} =
+    srand!(gen, _key_tuple(CBRNG{B,W,N,K}, seed))
+
+"""
+    set_state!(gen::CBGen, seed) -> gen
+
+Restores the seed of the next stream, as returned by `get_state(gen)`.
+"""
+set_state!(gen::CBGen, seed) = srand!(gen, seed)
 
 function show(io::IO, gen::CBGen{B,W,N,K}) where {B,W,N,K}
-    print(io, "Key for next ", _variant_name(CBRNG{B,W,N,K}), " generator:\n",
-          collect(gen.nextKey))
+    print(io, "Seed for next ", _variant_name(CBRNG{B,W,N,K}), " generator:\n",
+          collect(gen.nextSeed))
 end

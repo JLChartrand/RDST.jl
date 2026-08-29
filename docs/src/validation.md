@@ -11,6 +11,21 @@ using Pkg
 Pkg.test("RandomDataStreams")
 ```
 
+## Dependence between streams
+
+A battery run on a single stream says nothing about whether the *streams* are
+independent of each other. Following L'Ecuyer et al. (2021, Sec. 6) — "it is
+also important to test the dependence between those streams [...] one can
+construct sequences that take a few values from each stream for a certain
+number of streams, in a round-robin fashion" — the test suite also runs
+SmallCrush on a sequence built by interleaving 64 streams, one value at a time,
+for each of the four generators. For a counter-based generator this is what
+exercises the key schedule: a schedule handing out structurally related keys
+shows up here and not in a battery run on a single stream.
+
+The heavier configurations recommended by the paper (up to 1024 streams and up
+to 8 values per stream) are in `scripts/testu01_bigcrush.jl`.
+
 ## Running BigCrush
 
 The **BigCrush** battery is much more stringent and takes several hours per generator (typically 8 to 12 hours depending on the CPU). Because of this, it is not run during regular CI.

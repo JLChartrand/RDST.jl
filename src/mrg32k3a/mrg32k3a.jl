@@ -96,9 +96,34 @@ function show(io::IO,rng::MRG32k3a)
     print(io,"Full state of MRG32k3a generator:\nCg = $(rng.Cg)\nBg = $(rng.Bg)\nIg = $(rng.Ig)")
 end
 
+"""
+    get_state(rng::MRG32k3a) -> Vector{Int}
+
+Copy of the current state (`Cg`); restore it with [`set_state!`](@ref).
+"""
 function get_state(rng::MRG32k3a)::Array{Int, 1}
     return copy(rng.Cg)
 end
+
+"""
+    set_state!(rng::MRG32k3a, state) -> rng
+
+Restores the current position from a `get_state(rng)` value. Only the current
+state moves; the stream and substream boundaries (`Bg`, `Ig`) are untouched.
+"""
+function set_state!(rng::MRG32k3a, state)
+    s = Int.(collect(state))
+    PMF.checkseed(s) || throw(ArgumentError("invalid MRG32k3a state"))
+    rng.Cg[:] = s
+    return rng
+end
+
+"""
+    srand!(rng::MRG32k3a, seed) -> rng
+
+Reseeds the generator, resetting the stream and substream boundaries to `seed`.
+"""
+srand!(rng::MRG32k3a, seed) = Random.seed!(rng, seed)
 
 
 """

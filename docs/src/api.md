@@ -177,8 +177,9 @@ byte-for-byte against the original C implementations.
 | `reset_substream!` | yes | yes |
 | `next_substream!` | yes | yes |
 | `advance_state!` | yes | — |
-| `srand!` | — | yes |
+| `srand!` | yes | yes |
 | `get_state` | yes | yes |
+| `set_state!` | yes | yes |
 | `next_stream!` (via Gen) | yes | yes |
 
 ## Counter-based generators
@@ -190,6 +191,7 @@ streams and substreams — so a variant only supplies its bijection.
 
 ```@docs
 CBRNG
+RandomDataStreams.stream_key
 ```
 
 ### Philox

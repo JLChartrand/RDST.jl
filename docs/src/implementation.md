@@ -110,6 +110,28 @@ the whole working set in registers inside `next`, eliminating bounds checks and
 heap traffic that a `Vector{UInt64}` representation incurs. Measured
 throughput: ≈ 10⁹ draws/s on a single core.
 
+## Counter-based generators
+
+`CBRNG{B,W,N,K}` holds what every counter-based family shares — the counter,
+the key, the block most recently produced and the index of the next word in it.
+This is the state `(k, i, j)` of L'Ecuyer et al. (2021, Sec. 3), with
+`f(k, i, j) = (k, i + I[j = d-1], (j + 1) mod d)` and `d = N`. A variant only
+supplies `bijection(::Val{B}, ctr, key)`.
+
+**Streams** are keys. **Substreams** partition the counter, following the same
+paper: "one can use the `c0 < c` most significant bits of the counter to
+determine the substream, and the remaining `c1 = c - c0` bits for the position
+within the substream". `_substream_shift` splits the counter in half, so
+Philox4x32-10 has 2^64 substreams of 2^64 blocks each.
+
+**Key schedules.** `CBGen` walks the seeds `0, 1, 2, ...` and maps each through
+`stream_key`, a bijection that defaults to the identity. Consecutive small keys
+are safe for Philox — the ten rounds of encoding absorb the structure, as
+reported by Salmon et al. (2011) and discussed in L'Ecuyer et al. (2021,
+Sec. 3) — but they are *not* safe for every counter-based construction, so a
+family whose bijection is weak for structured keys must override `stream_key`
+with a schedule that hashes the seed.
+
 ## Integer outputs of MRG32k3a
 
 MRG32k3a natively yields ~31 bits per draw (the difference `p1 − p2`). Wider

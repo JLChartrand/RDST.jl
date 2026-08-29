@@ -70,6 +70,7 @@ long_jump!
 advance_state!
 srand!
 get_state
+set_state!
 next_stream!
 reset_stream!
 reset_substream!

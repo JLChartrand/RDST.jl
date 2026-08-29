@@ -348,26 +348,30 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         @test get_state(gen) == (UInt32(4), UInt32(5))
         @test get_state(next_stream!(gen))[2] == (UInt32(4), UInt32(5))
 
-        # advance_state! counts draws of the native word, like the other
-        # generators of the package -- including across block boundaries
-        ref = [rand(next_stream!(PhiloxGen()), UInt32) for _ in 1:1]
-        base = let q = next_stream!(PhiloxGen()); [rand(q, UInt32) for _ in 1:20] end
-        @test ref[1] == base[1]
-        for n in (1, 3, 4, 5, 9)                   # a block holds 4 words
+        # advance_state! counts rand(rng) draws, like every other generator --
+        # including across block boundaries. A block of Philox4x32-10 holds four
+        # 32-bit words, hence two draws.
+        base = let q = next_stream!(PhiloxGen()); [rand(q) for _ in 1:20] end
+        for n in (1, 2, 3, 5, 9)
             q = next_stream!(PhiloxGen())
             advance_state!(q, 0, n)
-            @test [rand(q, UInt32) for _ in 1:3] == base[n+1:n+3]
+            @test [rand(q) for _ in 1:3] == base[n+1:n+3]
         end
+
+        q = next_stream!(PhiloxGen())              # one draw = two 32-bit words
+        advance_state!(q, 0, 1)
+        ctr, _, _, idx = get_state(q)
+        @test ctr == 1 && idx == 3
 
         q = next_stream!(PhiloxGen())              # backwards from mid-block
         for _ in 1:7
-            rand(q, UInt32)
+            rand(q)
         end
         advance_state!(q, 0, -5)
-        @test [rand(q, UInt32) for _ in 1:2] == base[3:4]
+        @test [rand(q) for _ in 1:2] == base[3:4]
 
-        q = next_stream!(PhiloxGen())              # a substream is 2^66 draws
-        advance_state!(q, 66, 0)
+        q = next_stream!(PhiloxGen())              # a substream is 2^65 draws
+        advance_state!(q, 65, 0)
         @test get_state(q)[1] == UInt128(1) << 64
 
         a = next_stream!(PhiloxGen())
@@ -423,6 +427,62 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
             io = IOBuffer()
             show(io, T()); @test occursin(name, String(take!(io)))
             show(io, G()); @test occursin(name, String(take!(io)))
+        end
+    end
+
+
+    @testset "uniform stream interface" begin
+        # code written against AbstractStreamableRNG must work for every
+        # generator: same navigation, same get_state/set_state! round-trip,
+        # same srand! semantics.
+        makers = [
+            ("MRG32k3a",      () -> MRG32k3a([42, 1, 2, 3, 4, 5]), [7, 7, 7, 8, 8, 8]),
+            ("Xoshiro256pp",  () -> Xoshiro256pp(fill(UInt64(42), 4)), UInt64[1, 2, 3, 4]),
+            ("Xoroshiro128ss",() -> Xoroshiro128ss(fill(UInt64(42), 2)), UInt64[5, 6]),
+            ("Philox4x32-10", () -> next_stream!(PhiloxGen()), UInt32[3, 4]),
+            ("Philox4x64-10", () -> next_stream!(Philox4x64Gen()), UInt64[3, 4]),
+        ]
+        for (name, mk, seed) in makers
+            @testset "$name" begin
+                r = mk()
+                @test r isa RandomDataStreams.AbstractStreamableRNG
+
+                # get_state / set_state! are inverses
+                for _ in 1:3
+                    rand(r)
+                end
+                st = get_state(r)
+                expected = [rand(r) for _ in 1:5]
+                set_state!(r, st)
+                @test [rand(r) for _ in 1:5] == expected
+
+                # ... and restoring does not disturb the substream anchor
+                set_state!(r, st)
+                reset_substream!(r)
+                v0 = rand(r)
+                reset_substream!(r)
+                @test rand(r) == v0
+
+                # advance_state! counts draws, both ways, for every generator
+                a = mk()
+                base = [rand(a) for _ in 1:12]
+                b = mk()
+                advance_state!(b, 0, 5)
+                @test [rand(b) for _ in 1:3] == base[6:8]
+                advance_state!(b, 0, -8)
+                @test [rand(b) for _ in 1:3] == base[1:3]
+
+                # srand! rewinds the stream and substream boundaries
+                c = mk()
+                srand!(c, seed)
+                first = [rand(c) for _ in 1:4]
+                next_substream!(c)
+                rand(c)
+                srand!(c, seed)
+                @test [rand(c) for _ in 1:4] == first
+                reset_stream!(c)
+                @test [rand(c) for _ in 1:4] == first
+            end
         end
     end
 
@@ -758,3 +818,5 @@ end
 include("readme.jl")
 
 include("test_testu01.jl")
+
+include("test_streams_interleaved.jl")

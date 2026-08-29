@@ -299,6 +299,17 @@ three-argument constructor.
 """
 get_state(rng::LinRNG) = collect(rng.Cg)
 
+"""
+    set_state!(rng::LinRNG, state) -> rng
+
+Restores the current position from a `get_state(rng)` value. Only the current
+position moves; the stream and substream boundaries (`Bg`, `Ig`) are untouched.
+"""
+function set_state!(rng::LinRNG{N,S}, state) where {N,S}
+    rng.Cg = NTuple{N,UInt64}(state)
+    return rng
+end
+
 Random.rng_native_52(::LinRNG) = UInt64
 
 rand(rng::LinRNG, ::Random.SamplerType{UInt64}) = next(rng)
@@ -366,6 +377,13 @@ srand!(gen::LinGen{N,S}, seed::Vector{UInt64}) where {N,S} =
 Seed that will be used by the next `next_stream!` call.
 """
 get_state(gen::LinGen) = copy(gen.nextSeed)
+
+"""
+    set_state!(gen::LinGen, seed) -> gen
+
+Restores the seed of the next stream, as returned by `get_state(gen)`.
+"""
+set_state!(gen::LinGen, seed) = srand!(gen, collect(UInt64.(seed)))
 
 """
 Given an RNG generator object, returns the next RNG stream.

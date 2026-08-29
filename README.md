@@ -159,6 +159,9 @@ Full documentation lives in [`docs/`](docs/) and as a PDF in
 - L'Ecuyer, P. (1999). *Good Parameters and Implementations for Combined Multiple Recursive Random Number Generators*. Operations Research, 47(1), 159–164.
 - L'Ecuyer, P., Simard, R., Chen, E. J., & Kelton, W. D. (2002). *An Object-Oriented Random-Number Package with Many Long Streams and Substreams*. Operations Research, 50(6), 1073–1075.
 
+### Multiple streams in parallel environments
+- L'Ecuyer, P., Nadeau-Chamard, O., Chen, Y.-F., & Lebar, J. (2021). *Multiple Streams with Recurrence-Based, Counter-Based, and Splittable Random Number Generators*. Proceedings of the 2021 Winter Simulation Conference (WSC).
+
 ### xoshiro / xoroshiro
 - Blackman, D., & Vigna, S. (2021). *Scrambled Linear Pseudorandom Number Generators*. ACM Transactions on Mathematical Software, 47(4), 1-32.
 
