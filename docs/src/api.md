@@ -180,3 +180,10 @@ byte-for-byte against the original C implementations.
 | `srand!` | — | yes |
 | `get_state` | yes | yes |
 | `next_stream!` (via Gen) | yes | yes |
+
+## Philox
+
+```@docs
+PhiloxGen
+PhiloxRNG
+```

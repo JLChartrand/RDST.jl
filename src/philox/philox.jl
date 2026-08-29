@@ -32,6 +32,12 @@ end
 # Optimized state:
 # - ctr is a native UInt128 (incrementing is extremely fast without carry loops)
 # - buffer stores the 4 generated values to avoid wasting bits.
+"""
+    PhiloxRNG
+
+A RandomDataStreams compatible wrapper for the Philox4x32-10 Counter-Based RNG.
+Each stream uses a distinct key. Substreams are formed by jumping the counter by `2^64`.
+"""
 mutable struct PhiloxRNG <: AbstractStreamableRNG
     ctr::UInt128
     key::NTuple{2,UInt32}
@@ -82,6 +88,12 @@ Random.rng_native_52(::PhiloxRNG) = UInt64
 
 
 
+"""
+    PhiloxGen()
+
+A stream generator for the Philox4x32-10 Counter-Based RNG.
+Manages the non-overlapping keys used to initialize independent `PhiloxRNG` streams.
+"""
 mutable struct PhiloxGen <: AbstractRNGStream
     next_key_hi::UInt32
     next_key_lo::UInt32

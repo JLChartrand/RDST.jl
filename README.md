@@ -12,12 +12,13 @@ RandomDataStreams (Random Data Streams) provides random number generators (RNGs)
 This is a key requirement for stochastic simulation, parallel Monte Carlo, and
 reproducible variance-reduction techniques such as common random numbers.
 
-Two generator families are provided:
+Three generator families are provided:
 
 | Family | Variants | Period | Native output | Streams / substreams |
 |-------------|---------------|------|----------------------|----------------|
 | **MRG32k3a** | `MRG32k3a` | ≈ 2^191 | `Float64` | matrix jumps (L'Ecuyer) |
 | **xoshiro/xoroshiro** | `Xoroshiro128p/ss/pp`, `Xoshiro256p/ss/pp`, `Xoshiro512p/ss/pp` | 2^128 – 2^512 | `UInt64` | Vigna's jump polynomials |
+| **Philox** | `PhiloxRNG` | 2^128 | `UInt64` | counter increments (Salmon et al.) |
 
 All xoshiro/xoroshiro variants are validated byte-for-byte against the
 original C implementations from [xoshiro.di.unimi.it](http://xoshiro.di.unimi.it).
@@ -62,6 +63,19 @@ rand(rng)                    # Float64 in [0, 1)
 rand(rng, UInt64)            # raw 64-bit unsigned integer
 rand(rng, Int32)
 rand(rng, 1:10)              # random number in 1:10
+```
+
+
+### Philox
+
+```julia
+using RandomDataStreams
+
+gen = PhiloxGen()
+rng = next_stream!(gen)
+
+rand(rng)                    # Float64 in [0, 1)
+rand(rng, UInt64)            # raw 64-bit unsigned integer
 ```
 
 ### Xoshiro256+
@@ -142,6 +156,7 @@ Full documentation lives in [`docs/`](docs/) and as a PDF in
   Substreams*. Operations Research 50(6), 1073–1075.
 - Blackman, D., Vigna, S. (2019). *Scrambled Linear Pseudorandom Number
   Generators* (xoshiro256+).
+- Salmon, J. K., Moraes, M. A., Dror, R. O., & Shaw, D. E. (2011). *Parallel random numbers: as easy as 1, 2, 3*. SC '11: Proceedings of 2011 International Conference for High Performance Computing, Networking, Storage and Analysis.
 
 ## License
 
