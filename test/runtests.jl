@@ -15,7 +15,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         @test !checkseed([RandomDataStreams.PMF.m1, 1, 1, 1, 1, 1])          # >= m1 in first half
         @test !checkseed([1, 1, 1, RandomDataStreams.PMF.m2, 1, 1])          # >= m2 in second half
         @test checkseed([RandomDataStreams.PMF.m1 - 1, RandomDataStreams.PMF.m2 - 1, 7, RandomDataStreams.PMF.m2 - 1, 3, 9])
-    end
+        include("test_testu01.jl")
+end
 
     @testset "MRG32k3a constructors" begin
         rng = MRG32k3a()
@@ -35,7 +36,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         @test rng.Cg[1] == 1
 
         @test_throws AssertionError MRG32k3a([0, 0, 0, 1, 1, 1])
-    end
+        include("test_testu01.jl")
+end
 
     @testset "MRG32k3a reference values" begin
         rng = next_stream!(MRG32k3aGen())
@@ -64,8 +66,10 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         )
             r = next_stream!(MRG32k3aGen())
             @test [rand(r, T) for _ in 1:3] == ref
-        end
-    end
+            include("test_testu01.jl")
+end
+        include("test_testu01.jl")
+end
 
     @testset "MRG32k3a output properties" begin
         rng = MRG32k3a()
@@ -77,7 +81,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         v = [rand(r, 1:10) for _ in 1:10_000]
         @test all(1 .<= v .<= 10)
         @test count(==(1), v) > 500 && count(==(10), v) > 500
-    end
+        include("test_testu01.jl")
+end
 
     @testset "MRG32k3a streams & substreams" begin
         gen = MRG32k3aGen()
@@ -107,7 +112,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         reset_substream!(rng2)
         @test rand(rng2) == w1          # start of the new substream
         @test v1 != w1
-    end
+        include("test_testu01.jl")
+end
 
     @testset "MRG32k3a state handling" begin
         rng = next_stream!(MRG32k3aGen())
@@ -124,7 +130,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         c = copy(rng)
         rand(c); rand(c)
         @test rand(rng) != rand(c)      # copies evolve independently
-    end
+        include("test_testu01.jl")
+end
 
     @testset "MRG32k3a advance_state!" begin
         ref = next_stream!(MRG32k3aGen())
@@ -142,7 +149,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         rng2 = MRG32k3a([12345, 12345, 12345, 12345, 12345, 12345])
         advance_state!(rng2, Int64(0), Int64(2))
         @test rand(rng2) == vals[3]
-    end
+        include("test_testu01.jl")
+end
 
     @testset "MRG32k3aGen" begin
         gen = MRG32k3aGen()
@@ -156,7 +164,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         g2 = MRG32k3aGen([1, 2, 3, 4, 5, 6])
         r = next_stream!(g2)
         @test get_state(g2) != [1, 2, 3, 4, 5, 6]   # internal seed advanced
-    end
+        include("test_testu01.jl")
+end
 
     @testset "Xoshiro256p reference values" begin
         seed = UInt64[0x01, 0x02, 0x03, 0x04]
@@ -169,7 +178,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         @test RandomDataStreams.next(x) == 1153146630064993313
         x = Xoshiro256p(seed); long_jump!(x)
         @test RandomDataStreams.next(x) == 4237864540600467441
-    end
+        include("test_testu01.jl")
+end
 
     @testset "Xoshiro256p outputs" begin
         x = Xoshiro256p(UInt64[1, 2, 3, 4])
@@ -186,7 +196,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         @test all(1 .<= v .<= 10)
         counts = [count(==(i), v) for i in 1:10]
         @test maximum(counts) < 1500 && minimum(counts) > 500
-    end
+        include("test_testu01.jl")
+end
 
     @testset "Xoshiro256p streams & substreams" begin
         seed = UInt64[0x01, 0x02, 0x03, 0x04]
@@ -212,7 +223,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         ns = RandomDataStreams.next(x)
         reset_substream!(x)
         @test RandomDataStreams.next(x) == ns
-    end
+        include("test_testu01.jl")
+end
 
     @testset "Xoshiro256p state" begin
         seed = UInt64[0x01, 0x02, 0x03, 0x04]
@@ -226,7 +238,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         c = copy(x)
         RandomDataStreams.next(c)
         @test RandomDataStreams.next(x) != RandomDataStreams.next(c)
-    end
+        include("test_testu01.jl")
+end
 
     @testset "Xoshiro256plusGen" begin
         seed = UInt64[0x0d, 0x0e, 0x0a, 0x0d]
@@ -243,7 +256,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         srand!(gen, UInt64[1, 1, 1, 1])
         @test get_state(gen) == UInt64[1, 1, 1, 1]
         @test_throws ArgumentError Xoshiro256plusGen(UInt64[1, 2, 3])
-    end
+        include("test_testu01.jl")
+end
 
     @testset "show methods" begin
         io = IOBuffer()
@@ -255,7 +269,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         @test occursin("Xoshiro256plus", String(take!(io)))
         show(io, Xoshiro256plusGen(UInt64[1, 2, 3, 4]))
         @test occursin("Xoshiro256plus", String(take!(io)))
-    end
+        include("test_testu01.jl")
+end
 
     @testset "Random API integration" begin
         m = MRG32k3a()
@@ -266,7 +281,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         @test rand(m1) == rand(m2)      # identical copies produce identical values
         rand(m2)
         @test rand(m1) != rand(m2)
-    end
+        include("test_testu01.jl")
+end
 
     @testset "xoshiro/xoroshiro families" begin
         # Reference values validated byte-for-byte against the original C
@@ -281,9 +297,11 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
                 z = (z ⊻ (z >> 27)) * 0x94D049BB133111EB
                 v = z ⊻ (z >> 31)
                 out[w] = v == 0 ? UInt64(1) : v
-            end
+                include("test_testu01.jl")
+end
             out
-        end
+            include("test_testu01.jl")
+end
 
         refs = [
             ("x128p", RandomDataStreams.Xoroshiro128p,
@@ -322,7 +340,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
             @test RandomDataStreams.next(y) == shortv
             z = T(copy(seed)); long_jump!(z)
             @test RandomDataStreams.next(z) == longv
-        end
+            include("test_testu01.jl")
+end
 
         allvariants = [
             ("Xoroshiro128plus",     RandomDataStreams.Xoroshiro128p,    RandomDataStreams.Xoroshiro128pGen),
@@ -364,11 +383,13 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
             s2 = Set([RandomDataStreams.next(r2) for _ in 1:200])
             @test isempty(intersect(s1, s2))
             @test get_state(gen) != fill(UInt64(0xfeed), n)
-        end
+            include("test_testu01.jl")
+end
 
         @test_throws ArgumentError Xoroshiro128pGen(fill(UInt64(1), 3))
         @test_throws ArgumentError Xoshiro512pGen(fill(UInt64(1), 4))
-    end
+        include("test_testu01.jl")
+end
 
     @testset "advance_state! (xoshiro families)" begin
         seed256 = fill(UInt64(0x31), 4)
@@ -381,7 +402,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
             short_jump!(a)
             advance_state!(b, e, 0)
             @test a.Cg == b.Cg
-        end
+            include("test_testu01.jl")
+end
 
         # small forward jumps match manual stepping
         for k in (1, 2, 3, 17, 1000)
@@ -390,9 +412,11 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
             st = RandomDataStreams._lin_step(Xoshiro256p(seed256).Cg)
             for _ in 2:k
                 st = RandomDataStreams._lin_step(st)
-            end
+                include("test_testu01.jl")
+end
             @test y.Cg == st
-        end
+            include("test_testu01.jl")
+end
 
         # round trip: +k then -k restores the exact position
         for T in (Xoroshiro128pp, Xoshiro256p, Xoshiro512ss)
@@ -403,7 +427,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
             @test x.Cg != orig
             advance_state!(x, 0, -12345)
             @test x.Cg == orig
-        end
+            include("test_testu01.jl")
+end
 
         # backward jump then re-draw reproduces earlier values
         x = Xoshiro512pp(fill(UInt64(9), 8))
@@ -430,7 +455,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         bg_before = r.Bg; ig_before = r.Ig
         advance_state!(r, 10, 3)
         @test r.Bg == bg_before && r.Ig == ig_before
-    end
+        include("test_testu01.jl")
+end
 
     @testset "Random API parity" begin
         # drop-in substitutability with the standard library's Xoshiro:
@@ -448,7 +474,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
             for T in (Int, UInt8, UInt64, Int128, Char)
                 v = rand(r, T)
                 @test v isa T
-            end
+                include("test_testu01.jl")
+end
             @test all(1 .<= rand(r, 1:10) .<= 10)
             v = rand(r, 5); @test length(v) == 5
             @test size(rand(r, Int, 2, 2)) == (2, 2)
@@ -458,7 +485,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
             @test sort(shuffle(r, collect(1:8))) == collect(1:8)
             p = randperm(r, 6); @test sort(p) == collect(1:6)
             @test Random.randstring(r, 5) |> length == 5
-        end
+            include("test_testu01.jl")
+end
 
         # seed! reproducibility: same seed -> identical sequence
         for (mka, seed) in (
@@ -470,7 +498,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
             a1 = [rand(r1) for _ in 1:20]
             a2 = [rand(r2) for _ in 1:20]
             @test a1 == a2
-        end
+            include("test_testu01.jl")
+end
 
         # seed! accepts vectors and validates them
         r = MRG32k3a()
@@ -484,7 +513,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         s1 = next_stream!(gen); s2 = next_stream!(gen)
         @test !isempty(intersect([rand(s1) for _ in 1:100], [rand(s2) for _ in 1:100])) ==
               false
-    end
+        include("test_testu01.jl")
+end
 
     @testset "stream API matrix across all variants" begin
         # every stream/substream routine must work, with correct semantics,
@@ -547,8 +577,10 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
             advance_state!(g, 0, 999)
             advance_state!(g, 0, -999)
             @test g.Cg == T(seed).Cg && g.Bg == bg0 && g.Ig == ig0
-        end
-    end
+            include("test_testu01.jl")
+end
+        include("test_testu01.jl")
+end
 
     @testset "deprecated names" begin
         seed = fill(UInt64(0x77), 4)
@@ -556,15 +588,19 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         @test_logs (:warn, r"deprecated") match_mode = :any begin
             b = short_jump(a)          # old name still works...
             @test b === a              # ...and mutates in place
-        end
+            include("test_testu01.jl")
+end
         @test_logs (:warn, r"deprecated") match_mode = :any begin
             srand(a, seed)
             @test get_state(a) == seed
-        end
+            include("test_testu01.jl")
+end
         gen = MRG32k3aGen()
         @test_logs (:warn, r"deprecated") match_mode = :any next_stream(gen) isa MRG32k3a
-    end
+        include("test_testu01.jl")
+end
 
+    include("test_testu01.jl")
 end
 
 include("readme.jl")
