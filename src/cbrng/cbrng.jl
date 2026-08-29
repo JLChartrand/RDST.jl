@@ -84,7 +84,7 @@ is exhausted.
         rng.ctr = (rng.ctr + UInt128(1)) & _ctr_mask(W, Val(N))
         rng.idx = 1
     end
-    val = rng.buffer[rng.idx]
+    val = @inbounds rng.buffer[rng.idx]      # refill above guarantees 1 <= idx <= N
     rng.idx += 1
     return val
 end

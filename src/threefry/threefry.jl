@@ -2,9 +2,13 @@
 #
 # Threefry is a non-cryptographic reduction of the Threefish block cipher used
 # in Skein. Unlike Philox it uses no multiplication at all: each round is
-# add / rotate / xor only, which makes it reproducible bit-for-bit on any
-# architecture and the fastest of the family on CPUs without AES-NI. Salmon
-# et al. recommend 20 rounds there (13 already pass Crush; 20 keeps a margin).
+# add / rotate / xor only, so it is reproducible bit-for-bit on any
+# architecture, including ones with no fast integer multiply. Salmon et al.
+# found it the fastest of the family on the CPUs of 2011 and recommend 20
+# rounds there; 13 already pass Crush, and 20 keeps a safety margin. On a
+# current x86 the picture has moved -- see scripts/benchmarks/throughput.jl,
+# where Philox4x64-10 comes out ahead of Threefry4x64-20, ten multiply-rounds
+# against twenty ARX rounds.
 #
 # The generic counter/key/stream machinery lives in cbrng/cbrng.jl; this file
 # only supplies the bijection and the concrete aliases.
@@ -25,8 +29,6 @@ const THREEFRY_ROT_4x64 = ((14, 16), (52, 57), (23, 40), ( 5, 37),
 @inline _threefry_rot(::Type{UInt32}) = THREEFRY_ROT_4x32
 @inline _threefry_rot(::Type{UInt64}) = THREEFRY_ROT_4x64
 
-@inline _rotl(x::W, k::Int) where {W<:Unsigned} = (x << k) | (x >>> (8 * sizeof(W) - k))
-
 """
 Threefish key schedule: the four key words plus the parity word that makes
 their sum invariant, used round-robin at each key injection.
@@ -43,36 +45,46 @@ end
 output block of `4 * sizeof(W)` bytes of random bits. Rounds alternate between
 mixing `(x1, x2)`/`(x3, x4)` and `(x1, x4)`/`(x3, x2)`, with a key injection
 after every fourth round.
-"""
-function threefry(C::NTuple{4,W}, K::NTuple{4,W}, ::Val{R} = Val(20)) where {W,R}
-    ks = _threefry_ks(K)
-    rot = _threefry_rot(W)
 
-    x = (C[1] + ks[1], C[2] + ks[2], C[3] + ks[3], C[4] + ks[4])   # injection 0
+The rounds are unrolled at compile time. Each one uses a different pair of
+rotation constants, so a plain loop would index the constant table with a value
+LLVM cannot fold, which costs roughly a factor of nine — Threefry is supposed
+to be the *fastest* member of the family on a CPU, so the unrolling is not a
+micro-optimisation here.
+"""
+threefry(C::NTuple{4,W}, K::NTuple{4,W}) where {W} = threefry(C, K, Val(20))
+
+@generated function threefry(C::NTuple{4,W}, K::NTuple{4,W}, ::Val{R}) where {W,R}
+    rot = _threefry_rot(W)
+    body = Expr(:block,
+                :(ks = _threefry_ks(K)),
+                :(x1 = C[1] + ks[1]), :(x2 = C[2] + ks[2]),
+                :(x3 = C[3] + ks[3]), :(x4 = C[4] + ks[4]))   # injection 0
+
     for r in 0:(R - 1)
         r0, r1 = rot[(r % 8) + 1]
         if iseven(r)
-            x1 = x[1] + x[2]
-            x2 = _rotl(x[2], r0) ⊻ x1
-            x3 = x[3] + x[4]
-            x4 = _rotl(x[4], r1) ⊻ x3
+            push!(body.args,
+                  :(x1 += x2), :(x2 = rolt(x2, $r0) ⊻ x1),
+                  :(x3 += x4), :(x4 = rolt(x4, $r1) ⊻ x3))
         else
-            x1 = x[1] + x[4]
-            x4 = _rotl(x[4], r0) ⊻ x1
-            x3 = x[3] + x[2]
-            x2 = _rotl(x[2], r1) ⊻ x3
+            push!(body.args,
+                  :(x1 += x4), :(x4 = rolt(x4, $r0) ⊻ x1),
+                  :(x3 += x2), :(x2 = rolt(x2, $r1) ⊻ x3))
         end
-        x = (x1, x2, x3, x4)
 
         if r % 4 == 3                       # key injection number s = 1, 2, ...
             s = (r + 1) ÷ 4
-            x = (x[1] + ks[(s + 0) % 5 + 1],
-                 x[2] + ks[(s + 1) % 5 + 1],
-                 x[3] + ks[(s + 2) % 5 + 1],
-                 x[4] + ks[(s + 3) % 5 + 1] + W(s))
+            push!(body.args,
+                  :(x1 += ks[$((s + 0) % 5 + 1)]),
+                  :(x2 += ks[$((s + 1) % 5 + 1)]),
+                  :(x3 += ks[$((s + 2) % 5 + 1)]),
+                  :(x4 += ks[$((s + 3) % 5 + 1)] + $(W(s))))
         end
     end
-    return x
+
+    push!(body.args, :((x1, x2, x3, x4)))
+    return body
 end
 
 bijection(::Val{:threefry4x32_20}, ctr::NTuple{4,UInt32}, key::NTuple{4,UInt32}) =
@@ -90,9 +102,20 @@ _variant_name(::Type{<:CBRNG{:threefry4x64_20}}) = "Threefry4x64-20"
     Threefry4x64RNG([key, [ctr]])
 
 Threefry4x64-20 counter-based stream, the variant Salmon et al. recommend on
-CPUs without AES-NI. Four 64-bit key words identify the stream; substreams are
-`2^64` blocks apart. Only the low 128 bits of its 256-bit counter space are
-used, which still gives `2^130` draws per substream.
+CPUs. Four 64-bit key words identify the stream; substreams are `2^64` blocks
+apart. Only the low 128 bits of its 256-bit counter space are used, which still
+gives `2^130` draws per substream.
+
+The round count is a parameter of the bijection rather than of the type, so a
+faster 13-round variant — enough to pass Crush, per Salmon et al. — is three
+lines:
+
+```julia
+RandomDataStreams.bijection(::Val{:threefry4x64_13}, ctr::NTuple{4,UInt64}, key::NTuple{4,UInt64}) =
+    RandomDataStreams.threefry(ctr, key, Val(13))
+RandomDataStreams._variant_name(::Type{<:RandomDataStreams.CBRNG{:threefry4x64_13}}) = "Threefry4x64-13"
+const Threefry4x64_13RNG = RandomDataStreams.CBRNG{:threefry4x64_13,UInt64,4,4}
+```
 """
 const Threefry4x64RNG = CBRNG{:threefry4x64_20,UInt64,4,4}
 

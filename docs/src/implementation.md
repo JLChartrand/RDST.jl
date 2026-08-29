@@ -122,9 +122,17 @@ Two families are built on it. **Philox** keeps both halves of a fixed-constant
 multiplication and xors the high halves into the other words, with a Weyl
 sequence for the round key. **Threefry** is a reduction of the Threefish cipher
 used in Skein and contains no multiplication at all — add, rotate, xor only —
-so it is reproducible bit-for-bit on any architecture and, per Salmon et al.
-(2011), the fastest of the family on CPUs without AES-NI. Adding it required
-only its bijection and its aliases: 120 lines, no stream machinery.
+so it is reproducible bit-for-bit on any architecture, including ones with no
+fast integer multiply. Adding it required only its bijection and its aliases,
+no stream machinery.
+
+Its rounds are unrolled at compile time with a generated function. Each round
+uses a different pair of Skein rotation constants, so a plain loop indexes the
+constant table with a value LLVM cannot fold; unrolling is worth a factor of
+5.8 on the bijection (7.7 → 44.8 Mblocks/s), which is the difference between
+Threefry being unusable and being in the same class as Philox. The round count
+is a parameter of the bijection, not of the type, so the faster 13-round
+variant is three lines of user code.
 
 **Streams** are keys. **Substreams** partition the counter, following the same
 paper: "one can use the `c0 < c` most significant bits of the counter to
@@ -157,12 +165,29 @@ produced for every supported type, plus reset/jump/state round-trips.
 
 ## Performance snapshot
 
-Single core, Julia 1.12 (indicative):
+Reproduce with `julia -O3 --project=. scripts/benchmarks/throughput.jl`, which
+prints the Julia version and CPU it ran on. The figures below are one such run,
+single core, Julia 1.12.5 on a Skylake x86_64; treat them as ratios rather than
+absolutes, and re-run the script on the machine that matters to you.
 
-| Operation | Throughput |
-|---|---|
-| `rand(::MRG32k3a)` | ≈ 200 × 10⁶/s |
-| `rand(::Xoroshiro128p)` | ≈ 1200 × 10⁶/s |
-| `rand(::Xoshiro256p/ss/pp)` | ≈ 1340 × 10⁶/s |
-| `rand(::Xoshiro512p/ss/pp)` | ≈ 1150 × 10⁶/s |
-| `short_jump!` / `long_jump!` | 0 allocations |
+Draws per second, in millions:
+
+| Generator | `Float64` | `UInt64` | `UInt32` |
+|---|---|---|---|
+| `MRG32k3a` | 208 | 43 | 87 |
+| `Xoroshiro128p` | 741 | 1024 | 1011 |
+| `Xoshiro256p` | 772 | 1129 | 1126 |
+| `Xoshiro512p` | 626 | 878 | 866 |
+| `Philox4x32-10` | 91 | 106 | 255 |
+| `Philox4x64-10` | 200 | 257 | 257 |
+| `Threefry4x32-20` | 82 | 90 | 174 |
+| `Threefry4x64-20` | 139 | 149 | 150 |
+
+Raw bijection rate, in millions of 4-word blocks per second: `philox4x32-10`
+70, `philox4x64-10` 75, `threefry4x32-20` 45, `threefry4x64-20` 45. Comparing
+these with the table above shows that roughly a third of the cost of a
+counter-based draw is the buffer machinery around the cipher rather than the
+cipher itself; filling arrays a whole block at a time would be the next lever.
+
+Every generator draws with zero allocations, as do `short_jump!` and
+`long_jump!`.

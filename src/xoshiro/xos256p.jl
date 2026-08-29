@@ -11,7 +11,9 @@ import Base.rand
 # jump constants, which depend only on the transition.
 # ---------------------------------------------------------------------------
 
-@inline rolt(x::UInt64, k::Int64) = (x << k) | (x >>> (64 - k))
+"Rotate `x` left by `k` bits."
+@inline rolt(x::W, k::Integer) where {W<:Unsigned} =
+    (x << k) | (x >>> (8 * sizeof(W) - k))
 
 # Linear state transitions -----------------------------------------------------
 

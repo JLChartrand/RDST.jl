@@ -207,8 +207,10 @@ Philox4x64RNG
 
 Same construction as Philox, with no multiplication at all: every round is
 add / rotate / xor, which makes Threefry reproducible bit-for-bit across
-architectures and, per Salmon et al. (2011), the fastest of the family on CPUs
-without AES-NI. Twenty rounds is their recommendation there.
+architectures, including ones with no fast integer multiply. Salmon et al.
+(2011) found it the fastest of the family on the CPUs of the time and
+recommend twenty rounds there; on a current x86 our own measurement puts
+Philox4x64-10 ahead (see the performance notes).
 
 ```@docs
 Threefry4x64Gen

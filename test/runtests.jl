@@ -425,6 +425,14 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         @test [rand(rng, UInt32) for _ in 1:4] ==
               UInt32[0x9c6ca96a, 0xe17eae66, 0xfc10ecd4, 0x5256a7d8]
 
+        # the round count is a real parameter, not a constant tuned for 20:
+        # the 13-round variant matches its own Random123 vector
+        @test RandomDataStreams.threefry(z64, z64, Val(13)) ==
+              (0x4071fabee1dc8e05, 0x02ed3113695c9c62,
+               0x397311b5b89f9d49, 0xe21292c3258024bc)
+        @test RandomDataStreams.threefry(z32, z32, Val(13)) ==
+              (0x531c7e4f, 0x39491ee5, 0x2c855a92, 0x3d6abf9a)
+
         # no multiplication anywhere: the key schedule is pure xor
         @test RandomDataStreams._threefry_ks((UInt32(1), UInt32(2), UInt32(4), UInt32(8)))[5] ==
               UInt32(1) ⊻ UInt32(2) ⊻ UInt32(4) ⊻ UInt32(8) ⊻ 0x1BD11BDA
