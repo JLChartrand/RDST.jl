@@ -151,11 +151,14 @@ Full documentation lives in [`docs/`](docs/) and as a PDF in
 
 ## References
 
-- P. L'Ecuyer, R. Simard, E. J. Chen, W. D. Kelton (2002).
-  *An Object-Oriented Random-Number Package with Many Long Streams and
-  Substreams*. Operations Research 50(6), 1073–1075.
-- Blackman, D., Vigna, S. (2019). *Scrambled Linear Pseudorandom Number
-  Generators* (xoshiro256+).
+### MRG32k3a & Stream API
+- L'Ecuyer, P. (1999). *Good Parameters and Implementations for Combined Multiple Recursive Random Number Generators*. Operations Research, 47(1), 159–164.
+- L'Ecuyer, P., Simard, R., Chen, E. J., & Kelton, W. D. (2002). *An Object-Oriented Random-Number Package with Many Long Streams and Substreams*. Operations Research, 50(6), 1073–1075.
+
+### xoshiro / xoroshiro
+- Blackman, D., & Vigna, S. (2021). *Scrambled Linear Pseudorandom Number Generators*. ACM Transactions on Mathematical Software, 47(4), 1-32.
+
+### Philox
 - Salmon, J. K., Moraes, M. A., Dror, R. O., & Shaw, D. E. (2011). *Parallel random numbers: as easy as 1, 2, 3*. SC '11: Proceedings of 2011 International Conference for High Performance Computing, Networking, Storage and Analysis.
 
 ## License
