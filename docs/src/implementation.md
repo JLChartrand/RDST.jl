@@ -213,7 +213,10 @@ produced for every supported type, plus reset/jump/state round-trips.
 ## Performance snapshot
 
 Reproduce with `julia -O3 scripts/benchmarks/throughput.jl`, which prints the
-Julia version and CPU it ran on. Figures below are one run on a Skylake x86_64,
+Julia version and CPU it ran on. On a hybrid CPU (Intel 12th generation and
+later), pin the process first — `taskset -c 0 julia -O3 …` — and say which core
+type was used: otherwise the scheduler moves the run between performance and
+efficiency cores and the minimum reflects whichever was fastest. Figures below are one run on a Skylake x86_64,
 Julia 1.12.5, single core; treat them as ratios and re-run on the machine that
 matters to you.
 

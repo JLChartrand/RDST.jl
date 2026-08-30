@@ -23,6 +23,16 @@
 #
 #   * The bulk figures use `rand!` into a 4096-element vector, small enough to
 #     stay in cache, so they measure generation and not the memory system.
+#
+# On a hybrid CPU -- Intel 12th generation and later, with performance and
+# efficiency cores -- pin the process before quoting anything, or the scheduler
+# will move it between core types mid-run and the minimum will come from
+# whichever core happened to be fastest:
+#
+#     taskset -c 0 julia -O3 scripts/benchmarks/throughput.jl
+#
+# and say in the write-up which core type was used. A faster hybrid chip gives
+# *less* trustworthy numbers than a uniform one unless this is done.
 
 using Pkg
 Pkg.activate(@__DIR__)
