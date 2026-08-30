@@ -2,3 +2,8 @@ docs/build/
 docs/Manifest.toml
 Manifest.toml
 testu01-results/
+
+# Planning and editorial notes, kept out of the public repository
+docs/avis-joss.md
+docs/roadmap.md
+docs/roadmap-wsc.md
