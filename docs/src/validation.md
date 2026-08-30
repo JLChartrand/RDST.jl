@@ -109,6 +109,68 @@ nohup julia scripts/testu01/validate.jl --battery=bigcrush --suite=all > run.out
 tail -f testu01-results/bigcrush-*.log
 ```
 
+## Long campaigns: running for days without a session
+
+`validate.jl` runs one battery in one process, serially. That is the wrong shape
+for a BigCrush sweep: the full matrix is 16 generators times 3 suites, 48 runs,
+each taking the better part of a day, so a single process means weeks of
+sequential work in which one crash loses everything and a lost SSH session ends
+the campaign.
+
+`scripts/testu01/campaign.jl` runs the same matrix as independent OS processes:
+
+```bash
+# what would run, and what is already done
+julia scripts/testu01/campaign.jl --battery=bigcrush --status
+
+# measure one job before committing to the sweep
+julia scripts/testu01/campaign.jl --battery=bigcrush --calibrate
+
+# the sweep, six jobs at a time
+julia scripts/testu01/campaign.jl --battery=bigcrush --jobs=6
+```
+
+`--battery` is required: there is deliberately no default, so that a stray
+invocation cannot start a two-week sweep.
+
+**Resuming is the point.** `summary.tsv` records one line per finished
+`(battery, suite, generator)`. Re-running the same command skips those and does
+the rest, so an interruption costs only the jobs actually in flight — never the
+weeks already spent. Each job also writes its own `summary.tsv` in its own
+directory, which the driver reconciles, so even a driver killed mid-flight
+loses nothing that finished.
+
+**Stopping cleanly.** `touch <out>/STOP` stops new jobs from starting and waits
+for the running ones, which is how to end a campaign without discarding a
+battery that is twenty hours in. Ctrl-C does the same.
+
+**Surviving logout and reboot.** `nohup` survives a logout, `tmux` survives a
+logout and lets you reattach, and neither survives a reboot or restarts a driver
+that died. For a campaign measured in weeks, use the systemd *user* unit in
+`scripts/testu01/randomdatastreams-campaign.service`:
+
+```bash
+loginctl enable-linger $USER          # user services keep running after logout
+cp scripts/testu01/randomdatastreams-campaign.service ~/.config/systemd/user/
+$EDITOR ~/.config/systemd/user/randomdatastreams-campaign.service   # set paths
+systemctl --user daemon-reload
+systemctl --user start randomdatastreams-campaign
+journalctl --user -u randomdatastreams-campaign -f
+```
+
+The unit stops with `SIGINT` and a six-hour stop timeout, so `systemctl --user
+stop` lets the driver wait for its children rather than killing them, and
+`Restart=on-failure` brings back a driver that died — it resumes from
+`summary.tsv` like any other invocation.
+
+**Do not benchmark and validate at the same time.** The throughput figures in
+the implementation notes are minima over samples on an unloaded machine; a host
+running six BigCrush processes will produce numbers that measure the scheduler.
+Run `scripts/benchmarks/throughput.jl` first, pinned, then start the campaign.
+On a hybrid CPU (Intel 12th generation and later) pin the benchmark to a
+performance core with `taskset`; the batteries can use any core, since their
+results do not depend on how fast they were produced.
+
 ### What still needs BigCrush
 
 Two things the suite cannot settle at SmallCrush level:
