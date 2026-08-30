@@ -211,6 +211,57 @@ moves the state forward by `n` steps, where `n = 2^e + c` (`e` may be negative,
 and negative `c` moves backwards). This costs O(log n) matrix operations,
 independent of the distance jumped.
 
+## Scope: host-side streams, device-side bijections
+
+The stream object of L'Ecuyer et al. (2002) is stateful by construction — a
+current position, a substream anchor, a stream anchor, mutated in place. That
+makes it a **host-side** abstraction. A GPU kernel wants the opposite: no state
+at all, one value computed from the thread index. The package does not run on
+a device, and that is a scope boundary rather than a gap, because the two
+halves fit together.
+
+**Counter-based generators: the addressing scheme is the work assignment.** The
+key names the stream, the high half of the counter the substream, the low half
+the position. Any draw can therefore be recomputed from `(key, substream,
+index)` alone, with no object, which is exactly what a kernel needs:
+
+```julia
+using RandomDataStreams
+const RDS = RandomDataStreams
+
+function direct_word(key::NTuple{2,UInt32}, substream::Integer, i::Integer)
+    block, word = divrem(i, 4)                    # four 32-bit words per block
+    ctr = (UInt128(substream) << 64) | UInt128(block)
+    c = (ctr % UInt32, (ctr >> 32) % UInt32, (ctr >> 64) % UInt32, (ctr >> 96) % UInt32)
+    return RDS.philox(c, key)[word + 1]
+end
+```
+
+This agrees with the stream object draw for draw; the test suite checks it, so
+host and device address the same sequence. `philox` and `threefry` are pure,
+allocation-free functions of their arguments, which is the necessary condition
+for using them inside a kernel — necessary, not sufficient: the package has no
+GPU dependency and runs no device tests, so that last step is the user's.
+
+**Recurrence-based generators: the host computes the starting points.** There
+is no stateless form here, and the standard pattern runs the other way: use
+`next_stream!` on the host to produce as many non-overlapping starting states
+as there are tasks, ship one to each, and let each iterate its own recurrence.
+
+```julia
+gen = Xoshiro256plusGen(UInt64[1, 2, 3, 4])
+seeds = [get_state(next_stream!(gen)) for _ in 1:nworkers]    # non-overlapping
+```
+
+The jump machinery is what makes this cheap — matrix jumps for MRG32k3a, GF(2)
+polynomial jumps for the xoshiro families — and it is the construction
+L'Ecuyer et al. (2021, Sec. 2) describe for parallel environments.
+
+What the package does not provide: filling a `CuArray`, or any device-side
+`rand`. If that is what you need, take the bijections and the addressing scheme
+above, and keep the stream objects on the host for what they are good at —
+assigning non-overlapping work and replaying it identically.
+
 ## Guarantees
 
 - Streams produced by successive calls to `next_stream!` on the same generator

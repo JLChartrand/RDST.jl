@@ -590,6 +590,40 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         @test w == [rand(b, UInt128) for _ in 1:3]
     end
 
+
+    @testset "stateless addressing matches the stream object" begin
+        # A counter-based draw must be recomputable from (key, substream,
+        # index) alone, with no stream object: that identity is what lets a
+        # kernel, or any external consumer, address the same sequence the host
+        # assigned. Documented in the streams page; locked here.
+        function direct_word(key::NTuple{2,UInt32}, substream::Integer, i::Integer)
+            block, word = divrem(i, 4)               # four 32-bit words per block
+            ctr = (UInt128(substream) << 64) | UInt128(block)
+            c = (ctr % UInt32, (ctr >> 32) % UInt32,
+                 (ctr >> 64) % UInt32, (ctr >> 96) % UInt32)
+            return RandomDataStreams.philox(c, key)[word + 1]
+        end
+
+        gen = PhiloxGen()
+        for _ in 1:3
+            rng = next_stream!(gen)
+            key = get_state(rng)[2]
+            for s in (0, 1, 5)
+                reset_stream!(rng)
+                for _ in 1:s
+                    next_substream!(rng)
+                end
+                @test [rand(rng, UInt32) for _ in 0:9] == [direct_word(key, s, i) for i in 0:9]
+            end
+        end
+
+        # the counterpart for recurrence-based generators: the host hands out
+        # as many non-overlapping starting states as there are tasks
+        g = Xoshiro256plusGen(UInt64[1, 2, 3, 4])
+        seeds = [get_state(next_stream!(g)) for _ in 1:4]
+        @test length(unique(seeds)) == 4
+    end
+
     @testset "show methods" begin
         io = IOBuffer()
         show(io, MRG32k3a())
