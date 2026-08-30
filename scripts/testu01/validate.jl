@@ -34,6 +34,9 @@ Pkg.instantiate()
 
 using RandomDataStreams, Random, RNGTest, Printf, Dates
 
+include(joinpath(@__DIR__, "..", "provenance.jl"))
+const PROV = provenance()
+
 # Generators ------------------------------------------------------------------
 
 # Seeds are expanded through splitmix64 from one fixed integer: a low-entropy
@@ -226,6 +229,7 @@ function main(args)
 
     println("TestU01 validation -- ", opts.battery)
     println("Julia ", VERSION, ", ", Sys.CPU_NAME, ", ", Sys.MACHINE)
+    println(provenance_line(PROV))
     println(length(runs), " run(s), each taking ", duration, " for this battery\n")
     for (n, s) in runs
         @printf("  %-16s %s\n", n, s)
@@ -238,7 +242,8 @@ function main(args)
     mkpath(opts.out)
     index = joinpath(opts.out, "summary.tsv")
     isfile(index) || open(io -> println(io,
-        "timestamp\tbattery\tsuite\tgenerator\tseconds\tlog\tjulia\tcpu"), index, "w")
+        "timestamp\tbattery\tsuite\tgenerator\tseconds\tlog\tjulia\tcpu\t" *
+        "commit\tdirty\tpkgversion\tstreams\tvalues"), index, "w")
 
     println()
     for (name, suite) in runs
@@ -264,6 +269,7 @@ function main(args)
             open(log, "w") do io
                 println(io, "# ", opts.battery, " / ", suite, " / ", name)
                 println(io, "# Julia ", VERSION, ", ", Sys.CPU_NAME, ", ", Sys.MACHINE)
+                println(io, "# ", provenance_line(PROV))
                 println(io, "# started ", now())
                 suite == "interleaved" &&
                     println(io, "# ", opts.streams, " streams, ", opts.values, " value(s) each, round-robin")
@@ -294,7 +300,10 @@ function main(args)
 
         open(index, "a") do io
             println(io, join((now(), opts.battery, suite, name, round(elapsed, digits = 1),
-                              log, VERSION, Sys.CPU_NAME), '\t'))
+                              log, VERSION, Sys.CPU_NAME, PROV.commit, PROV.dirty,
+                              PROV.version,
+                              suite == "interleaved" ? opts.streams : "",
+                              suite == "interleaved" ? opts.values : ""), '\t'))
         end
         @printf("    done in %.1f s\n", elapsed)
     end

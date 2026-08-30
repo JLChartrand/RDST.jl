@@ -41,6 +41,8 @@ haskey(Pkg.project().dependencies, "RandomDataStreams") ||
 Pkg.instantiate()
 
 using RandomDataStreams, Random, BenchmarkTools, Printf
+
+include(joinpath(@__DIR__, "..", "provenance.jl"))
 const RDS = RandomDataStreams
 
 const N_SCALAR = 100_000        # draws per benchmark sample
@@ -90,6 +92,7 @@ end
 function main()
     println("RandomDataStreams throughput")
     println("Julia ", VERSION, ", ", Sys.CPU_NAME, ", ", Sys.MACHINE)
+    println(provenance_line())
     println("BenchmarkTools, minimum of the samples; ", N_SCALAR,
             " draws per scalar sample, ", N_BULK, " per rand! call")
     println(repeat("-", 78), "\n")

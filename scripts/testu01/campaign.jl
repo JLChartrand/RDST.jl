@@ -34,7 +34,10 @@
 # TestU01 keeps global state in C and is not thread-safe, which is the other
 # reason each job is its own process rather than a task.
 
-using Printf, Dates, Serialization
+using Printf, Dates
+
+include(joinpath(@__DIR__, "..", "provenance.jl"))
+const PROV = provenance()
 
 const HERE      = @__DIR__
 const VALIDATE  = joinpath(HERE, "validate.jl")
@@ -133,7 +136,8 @@ function reap!(running, out, log)
                            okay ? "done" : "FAILED (exit $(r.proc.exitcode))", human(elapsed)))
         okay && open(joinpath(out, "summary.tsv"), "a") do io
             println(io, join((now(), b, s, g, round(elapsed, digits = 1),
-                              relpath(r.dir, out), VERSION, Sys.CPU_NAME), '\t'))
+                              relpath(r.dir, out), VERSION, Sys.CPU_NAME,
+                              PROV.commit, PROV.dirty, PROV.version), '\t'))
         end
     end
     return still
@@ -191,7 +195,8 @@ function main(args)
     log = joinpath(out, "campaign.log")
     index = joinpath(out, "summary.tsv")
     isfile(index) || open(io -> println(io,
-        "timestamp\tbattery\tsuite\tgenerator\tseconds\tdir\tjulia\tcpu"), index, "w")
+        "timestamp\tbattery\tsuite\tgenerator\tseconds\tdir\tjulia\tcpu\t" *
+        "commit\tdirty\tpkgversion"), index, "w")
 
     if opts["status"]
         status(opts); return
@@ -207,8 +212,10 @@ function main(args)
     end
     opts["calibrate"] && (todo = todo[1:1])
 
+    warn_if_dirty(PROV)
     note(log, "campaign start: $(length(todo)) job(s), $(opts["jobs"]) at a time, " *
               "Julia $VERSION, $(Sys.CPU_NAME), $(Sys.CPU_THREADS) threads")
+    note(log, provenance_line(PROV))
     opts["calibrate"] && note(log, "calibration: one job only, to measure before committing")
 
     running = Any[]

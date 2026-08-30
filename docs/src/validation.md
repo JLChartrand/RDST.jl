@@ -163,6 +163,15 @@ stop` lets the driver wait for its children rather than killing them, and
 `Restart=on-failure` brings back a driver that died — it resumes from
 `summary.tsv` like any other invocation.
 
+**Every result names the code that produced it.** `summary.tsv` records the
+package version, the commit of `HEAD` and whether the working tree was clean,
+alongside the Julia version, the CPU and — for the interleaved suite — the
+number of streams and values per stream. Each battery log repeats it in its
+header. A campaign started from a dirty tree prints a warning before it begins,
+because a run measured in weeks cannot be repeated to find out afterwards which
+code produced it. The same line appears at the top of the throughput benchmark's
+report.
+
 **Do not benchmark and validate at the same time.** The throughput figures in
 the implementation notes are minima over samples on an unloaded machine; a host
 running six BigCrush processes will produce numbers that measure the scheduler.
