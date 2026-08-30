@@ -10,7 +10,7 @@ last section.
 
 ## In the test suite: SmallCrush
 
-A subset of the TestU01 batteries, **SmallCrush**, is automatically executed on all supported generators (`MRG32k3a`, `Xoshiro256+`, `Philox4x32-10`, `Philox4x64-10`, `Threefry4x64-20` and `Threefry4x32-20`) during the standard test suite. You can trigger this locally by running:
+A subset of the TestU01 batteries, **SmallCrush**, is automatically executed on all supported generators (`MRG32k3a`, `Xoshiro256+`, `PCG64`, `PCG64DXSM`, `Philox4x32-10`, `Philox4x64-10`, `Threefry4x64-20` and `Threefry4x32-20`) during the standard test suite. You can trigger this locally by running:
 
 ```julia
 using Pkg
@@ -55,7 +55,9 @@ builds a machine integer. Where the integer *is* the native output — Philox
 needs testing for itself, and `test/test_bits.jl` runs SmallCrush on the bit
 stream of: `MRG32k3a` in `UInt32` and in `UInt64` (16-bit chunks of a
 non-power-of-two modulus), the 64-bit counter-based families in `UInt32` (the
-low half of a cipher word), and `Xoshiro256+` in `UInt32` (the low bits of an
+low half of a cipher word), `PCG64` and `PCG64DXSM` in `UInt32` (the low bits
+of a permuted output -- DXSM ends in a multiplication, whose low bits depend on
+fewer input bits than its high ones), and `Xoshiro256+` in `UInt32` (the low bits of an
 additive scrambler).
 
 This battery earns its place: a `UInt64` construction for MRG32k3a that passed

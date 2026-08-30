@@ -186,10 +186,30 @@ mutable struct LinRNG{N,S} <: AbstractStreamableRNG
     Bg::NTuple{N,UInt64}   # start point of the current substream
     Ig::NTuple{N,UInt64}   # start point of the current stream
 
-    LinRNG{N,S}(x::NTuple{N,UInt64}) where {N,S} = new{N,S}(x, x, x)
-    LinRNG{N,S}(x::NTuple{N,UInt64}, y::NTuple{N,UInt64}, z::NTuple{N,UInt64}) where {N,S} =
-        new{N,S}(x, y, z)
+    function LinRNG{N,S}(x::NTuple{N,UInt64}) where {N,S}
+        checkseed(x) || throw(ArgumentError(_ZERO_STATE))
+        return new{N,S}(x, x, x)
+    end
+    function LinRNG{N,S}(x::NTuple{N,UInt64}, y::NTuple{N,UInt64}, z::NTuple{N,UInt64}) where {N,S}
+        (checkseed(x) && checkseed(y) && checkseed(z)) || throw(ArgumentError(_ZERO_STATE))
+        return new{N,S}(x, y, z)
+    end
 end
+
+const _ZERO_STATE = "the all-zero state is a fixed point of the xoshiro transition: \
+                     the generator would output zeros forever"
+
+"""
+    checkseed(s::NTuple{N,UInt64}) -> Bool
+    checkseed(v::AbstractVector{<:Unsigned}) -> Bool
+
+`true` unless the words are all zero. The all-zero state maps to itself under
+every xoshiro/xoroshiro transition, so it is the one state the families forbid;
+there is no other constraint. (The `Vector{Int}` method is MRG32k3a's, whose
+seed space is constrained differently.)
+"""
+checkseed(s::NTuple{N,UInt64}) where {N} = !all(iszero, s)
+checkseed(v::AbstractVector{<:Unsigned}) = !all(iszero, v)
 
 LinRNG{N,S}(v::Vector{<:Unsigned}) where {N,S} = LinRNG{N,S}(NTuple{N,UInt64}(v))
 
@@ -272,6 +292,7 @@ Seeds a generator with the first words of `seed`.
 """
 function srand!(rng::LinRNG{N}, seed::Vector{UInt64}) where {N}
     s = NTuple{N,UInt64}(seed)
+    checkseed(s) || throw(ArgumentError(_ZERO_STATE))
     rng.Cg = rng.Bg = rng.Ig = s
     return rng
 end
@@ -315,7 +336,9 @@ Restores the current position from a `get_state(rng)` value. Only the current
 position moves; the stream and substream boundaries (`Bg`, `Ig`) are untouched.
 """
 function set_state!(rng::LinRNG{N,S}, state) where {N,S}
-    rng.Cg = NTuple{N,UInt64}(state)
+    st = NTuple{N,UInt64}(state)
+    checkseed(st) || throw(ArgumentError(_ZERO_STATE))
+    rng.Cg = st
     return rng
 end
 
@@ -342,6 +365,7 @@ mutable struct LinGen{N,S} <: AbstractRNGStream
 
     function LinGen{N,S}(x::Vector{UInt64}) where {N,S}
         length(x) == N || throw(ArgumentError("seed must have $N UInt64 elements"))
+        checkseed(x) || throw(ArgumentError(_ZERO_STATE))
         new{N,S}(copy(x))
     end
     function LinGen{N,S}(x::Vector{T}) where {N, S, T <: Integer}
@@ -349,6 +373,7 @@ mutable struct LinGen{N,S} <: AbstractRNGStream
         #float are not implemented right now, could be done in the future.
         newx = mod.(x, UInt64)
         length(x) == N || throw(ArgumentError("seed must have $N UInt64 elements"))
+        checkseed(newx) || throw(ArgumentError(_ZERO_STATE))
         new{N,S}(copy(newx))
     end
 end

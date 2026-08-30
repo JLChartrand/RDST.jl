@@ -4,9 +4,11 @@
 
 For the xoshiro/xoroshiro families the all-zero state maps to itself: the
 generator would output only zeros forever. MRG32k3a's two components have the
-same degeneracy (an all-zero component stays zero). Constructors and
-`checkseed` reject such seeds; `Random.seed!(rng, ::Integer)` never produces
-one.
+same degeneracy (an all-zero component stays zero). Constructors, `srand!`,
+`set_state!` and `Random.seed!` all reject such a seed with an
+`ArgumentError`, and `checkseed` is the predicate they use, so you can test a
+seed yourself before handing it over. An integer seed never produces one.
+PCG and the counter-based generators have no invalid seed at all.
 
 ## Are MRG32k3a integer outputs uniform over their full width?
 

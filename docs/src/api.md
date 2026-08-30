@@ -4,11 +4,71 @@ All names below are exported by the `RandomDataStreams` module unless marked *(i
 
 ## Types
 
-**`AbstractRNGStream`** — supertype of stream *generators* (objects that mint
-new independent streams): `MRG32k3aGen`, `Xoshiro256plusGen`.
+**`AbstractRNGStream`** — supertype of stream *generators*: objects that mint
+new independent streams. `MRG32k3aGen`, the nine `Xoshiro*Gen`/`Xoroshiro*Gen`,
+`PCG64Gen`, `PCG64DXSMGen`, `PhiloxGen`, `Philox4x64Gen`, `Threefry4x32Gen`,
+`Threefry4x64Gen`.
 
 **`AbstractStreamableRNG <: Random.AbstractRNG`** — supertype of usable RNGs
-that can navigate streams and substreams: `MRG32k3a`, `Xoshiro256p`.
+that navigate streams and substreams. `MRG32k3a`, the nine xoshiro/xoroshiro
+variants, `PCG64`, `PCG64DXSM`, `PhiloxRNG`, `Philox4x64RNG`,
+`Threefry4x32RNG`, `Threefry4x64RNG`.
+
+---
+
+## The common interface
+
+Everything in this section works on **every** generator the package ships, with
+the same meaning. It is asserted for all sixteen in the test suite, so code
+written against `AbstractStreamableRNG` never has to name a family. The
+per-family sections below add only what is specific.
+
+### Seeding
+
+| Form | Meaning |
+|---|---|
+| `T()`, `Gen()` | the package default seed, `12345` |
+| `T(12345)`, `Gen(12345)` | an **integer seed**, expanded through splitmix64 |
+| `T(v)`, `Gen(v)` | the family's **own representation** — its seed vector, or a `UInt128` for PCG — taken as the state or key itself |
+| `Random.seed!(rng, 12345)` | same as `T(12345)`, in place |
+| `srand!(rng, seed)`, `srand!(gen, seed)` | reseed, resetting both boundaries |
+
+The distinction is the whole rule: an integer is a *seed* and gets hashed; a
+value shaped like the state *is* the state.
+
+### On the stream
+
+| Call | Meaning |
+|---|---|
+| `next_substream!(rng) -> rng` | move to the start of the next substream |
+| `reset_substream!(rng) -> rng` | rewind to the start of the current substream |
+| `reset_stream!(rng) -> rng` | rewind to the start of the current stream |
+| `advance_state!(rng, e, c) -> rng` | move by `2^e + c` draws; negative moves backwards |
+| `get_state(rng)` / `set_state!(rng, s) -> rng` | save and restore the position only |
+| `copy(rng)`, `show(io, rng)` | independent copy, full state display |
+| the full `Random` API | `rand`, `rand!`, `randn`, `shuffle`, ranges, every integer and float type |
+
+`get_state` returns a family-specific representation. Treat it as opaque and
+only ever hand it back to `set_state!`.
+
+### On the generator object
+
+| Call | Meaning |
+|---|---|
+| `next_stream!(gen) -> rng` | the next non-overlapping stream |
+| `srand!(gen, seed) -> gen` | reset the seed the next `next_stream!` will use |
+| `get_state(gen)` / `set_state!(gen, s) -> gen` | save and restore that seed |
+| `show(io, gen)` | display it |
+
+### What is *not* common
+
+| Name | Where | Why not everywhere |
+|---|---|---|
+| `short_jump!(rng)` | xoshiro/xoroshiro, PCG | the family's spelling of a jump by exactly the substream distance; use `next_substream!` in portable code |
+| `long_jump!(rng)` | xoshiro/xoroshiro, PCG | jumps by the stream distance in place. Meaningless for a counter-based generator, where changing stream means changing *key*, which belongs to the generator object |
+| `checkseed` | MRG32k3a, xoshiro/xoroshiro | those two families have invalid seeds — MRG32k3a's two moduli with no all-zero component, and the xoshiro all-zero state, which is a fixed point. PCG and the counter-based families accept every value |
+| `stream_key` | counter-based | the key schedule hook; there is nothing to schedule in a recurrence-based generator |
+| `next(rng)` *(internal)* | all | raw word output, before any conversion |
 
 ---
 
@@ -19,6 +79,7 @@ that can navigate streams and substreams: `MRG32k3a`, `Xoshiro256p`.
 | Signature | Description |
 |---|---|
 | `MRG32k3a()` | default seed `[12345, 12345, 12345, 12345, 12345, 12345]` |
+| `MRG32k3a(seed::Integer)` | integer seed, folded into the valid seed space |
 | `MRG32k3a(x::Vector{Int})` | seed all three states (`Cg = Bg = Ig = x`) |
 | `MRG32k3a(x, y, z::Vector{Int})` | explicit current/substream/stream starts |
 
@@ -44,7 +105,7 @@ Set `Cg` back to `Bg`.
 Advance `Bg` to the next substream boundary (jump of ≈ 2^76 steps) and set
 `Cg = Bg`.
 
-**`advance_state!(rng, e::Integer, c::Integer)`**
+**`advance_state!(rng, e::Integer, c::Integer) -> rng`**
 Jump forward/backward inside the current substream by `n` steps where
 `n = 2^e + c`. Negative `e` or `c` move backwards. Cost is O(max(|e|, log |c|))
 matrix operations.
@@ -66,9 +127,10 @@ Independent deep copy of the generator (all three state vectors).
 
 | Signature | Description |
 |---|---|
-| `MRG32k3aGen()`, `MRG32k3aGen(seed)` | create a stream generator |
+| `MRG32k3aGen()`, `MRG32k3aGen(12345)`, `MRG32k3aGen(v)` | create a stream generator |
 | `next_stream!(gen) -> MRG32k3a` | return a new stream; internal seed leaps 2^127 values ahead |
-| `get_state(gen) -> Vector{Int}` | seed that will be used by the next `next_stream!` call |
+| `srand!(gen, seed) -> gen` | reset the stored seed |
+| `get_state(gen) -> Vector{Int}` / `set_state!(gen, s)` | save and restore it |
 
 ---
 
@@ -78,6 +140,8 @@ Independent deep copy of the generator (all three state vectors).
 
 | Signature | Description |
 |---|---|
+| `Xoshiro256p()` | the package default seed, `12345`, through splitmix64 |
+| `Xoshiro256p(seed::Integer)` | integer seed, through splitmix64 (never all-zero) |
 | `Xoshiro256p(s::NTuple{4,UInt64})` / `Xoshiro256p(v::Vector{<:Unsigned})` | `Cg = Bg = Ig = s` |
 | `Xoshiro256p(x, y, z)` | explicit current/substream/stream states |
 
@@ -117,7 +181,7 @@ Independent copy.
 
 | Signature | Description |
 |---|---|
-| `Xoshiro256plusGen(seed::Vector{UInt64})` | create a stream generator (seed must have exactly 4 words) |
+| `Xoshiro256plusGen()`, `Xoshiro256plusGen(12345)`, `Xoshiro256plusGen(v)` | create a stream generator (a seed *vector* must have exactly 4 words) |
 | `next_stream!(gen) -> Xoshiro256p` | new independent stream (`long_jump!` from the stored seed) |
 | `srand!(gen, seed::Vector{UInt64}) -> gen` | reset the stored seed |
 | `get_state(gen) -> Vector{UInt64}` | seed that will be used by the next `next_stream!` call |
@@ -166,21 +230,25 @@ byte-for-byte against the original C implementations.
 
 ---
 
-## Method index
+## Where the families actually differ
 
-| Function | MRG32k3a | Xoshiro256p |
-|---|:---:|:---:|
-| `rand` (Float64) | yes | yes |
-| `rand` (other floats/ints/bool) | yes | partial |
-| `rand` (range) | yes | yes (`UnitRange{Int64}`) |
-| `reset_stream!` | yes | yes |
-| `reset_substream!` | yes | yes |
-| `next_substream!` | yes | yes |
-| `advance_state!` | yes | — |
-| `srand!` | yes | yes |
-| `get_state` | yes | yes |
-| `set_state!` | yes | yes |
-| `next_stream!` (via Gen) | yes | yes |
+Every call in [The common interface](#The-common-interface) is available on all
+sixteen generators, so there is no availability matrix to consult. What differs
+is cost and representation:
+
+| | MRG32k3a | xoshiro / xoroshiro | PCG64, PCG64DXSM | Philox, Threefry |
+|---|---|---|---|---|
+| Native output | `Float64`, ~32-bit resolution | `UInt64` | `UInt64` | a block of four words |
+| `get_state` returns | `Vector{Int}` (6) | `Vector{UInt64}` (`N`) | `UInt128` | `(ctr, key, buffer, idx)` |
+| Cost of `advance_state!` | O(e) matrix products | O((64N)²) GF(2) ops, ~10–500 ms | O(log n) multiplies | O(1), a counter addition |
+| `short_jump!`, `long_jump!` | — | yes | yes | — |
+| Rejected seeds | `checkseed`: two moduli, no all-zero component | `checkseed`: the all-zero state | none | none |
+| Whole-block `rand!` | — | — | — | yes, ~1.7× the scalar path |
+| Extra hooks | `checkseed`, `DEFAULT_SEED` | jump polynomials | — | `stream_key` |
+
+For the standard distances on a xoshiro or PCG generator prefer
+`short_jump!`/`long_jump!` over `advance_state!`: they use precomputed
+constants (xoshiro) or a single doubling chain (PCG) and are allocation-free.
 
 ## PCG
 

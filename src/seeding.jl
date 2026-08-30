@@ -37,6 +37,7 @@ end
 
 function Random.seed!(rng::LinRNG{N}, seed::Vector{<:Unsigned}) where {N}
     length(seed) == N || throw(ArgumentError("seed must have $N UInt64 elements"))
+    checkseed(seed) || throw(ArgumentError(_ZERO_STATE))
     rng.Cg = rng.Bg = rng.Ig = NTuple{N,UInt64}(seed)
     return rng
 end

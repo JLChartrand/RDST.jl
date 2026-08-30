@@ -22,7 +22,7 @@ Requirements: Julia ≥ 1.6. The only dependency is the standard library `Random
 
 ## Choosing a generator
 
-RandomDataStreams.jl implements the full xoshiro/xoroshiro family of Blackman & Vigna, L'Ecuyer's MRG32k3a, and the Philox and Threefry CBRNGs. All variants of a xoshiro family share the same linear
+RandomDataStreams.jl implements the full xoshiro/xoroshiro family of Blackman & Vigna, L'Ecuyer's MRG32k3a, O'Neill's PCG (the default bit generator of NumPy), and the Philox and Threefry CBRNGs. All variants of a xoshiro family share the same linear
 transition and jump constants; only the output scrambler differs.
 
 | Type | Family | State | Period | Scrambler |
@@ -41,8 +41,35 @@ transition and jump constants; only the output scrambler differs.
 | `Xoshiro512ss` | xoshiro512 | 512 bits | 2^512 − 1 | high bits, `**` |
 | `Xoshiro512pp` | xoshiro512 | 512 bits | 2^512 − 1 | high bits, `++` |
 | `MRG32k3a` | combined MRG (L'Ecuyer) | 192 bits | ≈ 2^191 | native `Float64` |
+| `PCG64` | PCG (O'Neill) | 128 bits | 2^128 | XSL-RR permutation |
+| `PCG64DXSM` | PCG (O'Neill) | 128 bits | 2^128 | DXSM permutation |
 
 See [Generator Comparison](comparison.md) for guidance and benchmarks.
+
+## Seeding: one rule for every generator
+
+Whatever generator you pick, there are three ways to seed it, and they mean the
+same thing in every family:
+
+```julia
+MRG32k3aGen()             # the package default seed, 12345
+MRG32k3aGen(20260830)     # an integer seed
+MRG32k3aGen([1,2,3,4,5,6])# the family's own seed vector
+
+Xoshiro256ppGen(20260830) # exactly the same three forms
+PCG64Gen(20260830)
+PhiloxGen(20260830)
+```
+
+An **integer** is a *seed*: it is expanded through splitmix64 and folded into
+whatever the family accepts, so `T(20260830)` is equivalent to
+`Random.seed!(T(), 20260830)` everywhere. A value in the family's **own
+representation** — its seed vector, or a `UInt128` for PCG — is taken as the
+state or key itself, not hashed.
+
+The same three forms work on the stream types directly (`MRG32k3a(20260830)`,
+`Xoshiro256pp(20260830)`, ...). See
+[Streams & Substreams](streams.md) for the full interface table.
 
 ## First numbers
 

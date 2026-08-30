@@ -6,6 +6,27 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
 
 @testset "RandomDataStreams.jl" begin
 
+    @testset "the all-zero xoshiro state is refused everywhere" begin
+        # It is a fixed point of every xoshiro/xoroshiro transition, so a
+        # generator holding it returns zeros forever -- and used to, silently.
+        # The FAQ has always said constructors reject it; now they do, and so
+        # does every other way the state can be set.
+        z4 = fill(UInt64(0), 4)
+        @test !RandomDataStreams.checkseed(z4)
+        @test RandomDataStreams.checkseed(UInt64[0, 0, 0, 1])
+        @test_throws ArgumentError Xoshiro256pp(z4)
+        @test_throws ArgumentError RandomDataStreams.Xoshiro256ppGen(z4)
+        @test_throws ArgumentError srand!(Xoshiro256pp(), z4)
+        @test_throws ArgumentError set_state!(Xoshiro256pp(), z4)
+        @test_throws ArgumentError Random.seed!(Xoshiro256pp(), z4)
+        @test_throws ArgumentError RandomDataStreams.Xoroshiro128p(fill(UInt64(0), 2))
+        @test_throws ArgumentError RandomDataStreams.Xoshiro512p(fill(UInt64(0), 8))
+        # and no integer seed can produce one
+        @test all(RandomDataStreams.checkseed(RandomDataStreams._seed_words_nonzero(UInt64(k), 4))
+                  for k in 0:200)
+    end
+
+
     @testset "checkseed" begin
         @test checkseed(RandomDataStreams.DEFAULT_SEED)
         @test !checkseed([1, 2, 3, 4, 5])                       # wrong length
@@ -1106,7 +1127,7 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         # seed! reproducibility: same seed -> identical sequence
         for (mka, seed) in (
             (() -> MRG32k3a(), 12345),
-            (() -> Xoshiro256pp(fill(UInt64(0), 4)), 6789),
+            (() -> Xoshiro256pp(), 6789),      # the state is replaced by seed! below
             (() -> PhiloxRNG(), 6789),
         )
             r1 = mka(); r2 = mka()
@@ -1120,8 +1141,9 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         r = MRG32k3a()
         Random.seed!(r, [7, 7, 7, 8, 8, 8]); @test r.Cg == [7, 7, 7, 8, 8, 8]
         @test_throws ArgumentError Random.seed!(r, [0, 0, 0, 1, 1, 1])
-        x = Xoshiro256p(fill(UInt64(0), 4))
+        x = Xoshiro256p()
         Random.seed!(x, UInt64[1, 2, 3, 4]); @test get_state(x) == UInt64[1, 2, 3, 4]
+        @test_throws ArgumentError Random.seed!(x, fill(UInt64(0), 4))
 
         # streams still work through the generic API
         gen = Xoshiro256plusGen(UInt64[1, 2, 3, 4])
