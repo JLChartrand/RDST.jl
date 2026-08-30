@@ -27,7 +27,25 @@ stream or substream boundaries. The representation returned by `get_state`
 differs between families, so generic code should treat it as opaque and only
 ever hand it back to `set_state!`.
 
-Streams themselves are produced by an [`AbstractRNGStream`](@ref) object:
-`next_stream!(gen)` returns the next non-overlapping stream.
+Streams themselves are produced by an [`AbstractRNGStream`](@ref) object, which
+implements the same operations on its side:
+
+| operation | meaning |
+|---|---|
+| `Gen()` | a generator seeded with the package default, `12345` |
+| `Gen(seed)` | seeded with an integer, or with the family's own seed vector |
+| `next_stream!(gen)` | the next non-overlapping stream |
+| `srand!(gen, seed)` | reset the seed the next `next_stream!` will use |
+| `get_state(gen)` / `set_state!(gen, s)` | save and restore that seed |
+
+An integer seed is expanded through splitmix64 and folded into whatever the
+family accepts, so `MRG32k3aGen(12345)`, `Xoshiro256ppGen(12345)`,
+`PhiloxGen(12345)` and `PCG64Gen(12345)` all mean the same kind of thing.
+
+Not part of this contract: `short_jump!` and `long_jump!`, which are the
+xoshiro and PCG spelling of a jump by the substream and stream distance. Use
+`next_substream!` for portable code. `long_jump!` has no meaning for a
+counter-based generator at all, where moving to another stream means taking
+another key, an operation that belongs to the generator object.
 """
 abstract type AbstractStreamableRNG <: AbstractRNG end # object of subtype of AbstractStreamableRNG are StreamableRNG

@@ -39,6 +39,11 @@ function copy(m::MRG32k3a)
     MRG32k3a(copy(m.Cg), copy(m.Bg), copy(m.Ig))
 end
 
+# Uniform constructor: a plain integer seed, folded into the valid MRG32k3a
+# seed space, so `MRG32k3a(12345)` means what `Xoshiro256pp(12345)` and
+# `PCG64(12345)` mean.
+MRG32k3a(seed::Integer) = MRG32k3a(_mrg_seed_words(UInt64(seed)))
+
 
 """
 Advances the state of `rng` by one step and returns the raw pair `(p1, p2)`.
@@ -181,4 +186,5 @@ function advance_state!(rng::MRG32k3a, e::Int64, c::Int64)
 
     rng.Cg[1:3] = PMF.MatVecModM(C1, view(rng.Cg, 1:3), PMF.m1)
     rng.Cg[4:6] = PMF.MatVecModM(C2, view(rng.Cg, 4:6), PMF.m2)
+    return rng          # every family's navigation returns the generator
 end

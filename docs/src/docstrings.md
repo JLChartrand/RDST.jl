@@ -40,6 +40,7 @@ Xoroshiro128pGen
 Xoroshiro128ssGen
 Xoroshiro128ppGen
 Xoshiro256plusGen
+Xoshiro256pGen
 Xoshiro256ssGen
 Xoshiro256ppGen
 Xoshiro512pGen

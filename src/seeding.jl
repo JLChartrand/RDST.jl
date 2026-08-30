@@ -16,6 +16,13 @@ function _splitmix_words(seed::UInt64, n::Int)
     return out
 end
 
+"Expand an integer seed into n words that are never all zero (a forbidden xoshiro state)."
+function _seed_words_nonzero(seed::UInt64, n::Int)
+    ws = _splitmix_words(seed, n)
+    all(iszero, ws) && (ws[1] = _GOLDEN)
+    return ws
+end
+
 """
     Random.seed!(rng::LinRNG, seed::Integer) -> rng
     Random.seed!(rng::LinRNG, seed::Vector{UInt64}) -> rng
@@ -24,9 +31,7 @@ Re-seed the generator with all three checkpoints equal. Integer seeds are
 expanded through splitmix64 (Vigna's recommended initialization).
 """
 function Random.seed!(rng::LinRNG{N}, seed::Integer) where {N}
-    ws = _splitmix_words(UInt64(seed), N)
-    all(iszero, ws) && (ws[1] = 0x9e3779b97f4a7c15)      # never an all-zero state
-    rng.Cg = rng.Bg = rng.Ig = NTuple{N,UInt64}(ws)
+    rng.Cg = rng.Bg = rng.Ig = NTuple{N,UInt64}(_seed_words_nonzero(UInt64(seed), N))
     return rng
 end
 
@@ -34,6 +39,21 @@ function Random.seed!(rng::LinRNG{N}, seed::Vector{<:Unsigned}) where {N}
     length(seed) == N || throw(ArgumentError("seed must have $N UInt64 elements"))
     rng.Cg = rng.Bg = rng.Ig = NTuple{N,UInt64}(seed)
     return rng
+end
+
+"Fold an integer seed into the valid MRG32k3a seed space."
+function _mrg_seed_words(seed::UInt64)
+    w = _splitmix_words(seed, 6)
+    v = Vector{Int}(undef, 6)
+    for i in 1:3
+        v[i] = Int(w[i] % PMF.m1)
+    end
+    for i in 4:6
+        v[i] = Int(w[i] % PMF.m2)
+    end
+    all(iszero, view(v, 1:3)) && (v[1] = 1)
+    all(iszero, view(v, 4:6)) && (v[4] = 1)
+    return v
 end
 
 """
@@ -45,17 +65,7 @@ through splitmix64 and folded into the valid MRG32k3a seed space; vector seeds
 must satisfy `checkseed`.
 """
 function Random.seed!(rng::MRG32k3a, seed::Integer)
-    w = _splitmix_words(UInt64(seed), 6)
-    v = Vector{Int}(undef, 6)
-    for i in 1:3
-        v[i] = Int(w[i] % PMF.m1)
-    end
-    for i in 4:6
-        v[i] = Int(w[i] % PMF.m2)
-    end
-    all(iszero, view(v, 1:3)) && (v[1] = 1)
-    all(iszero, view(v, 4:6)) && (v[4] = 1)
-    rng.Cg[:] = rng.Bg[:] = rng.Ig[:] = v
+    rng.Cg[:] = rng.Bg[:] = rng.Ig[:] = _mrg_seed_words(UInt64(seed))
     return rng
 end
 

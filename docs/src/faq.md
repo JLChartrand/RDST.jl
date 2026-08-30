@@ -35,6 +35,15 @@ favour of:
 
 The old names still work but emit a deprecation warning.
 
+## What does an integer seed mean?
+
+The same thing for every generator: it is expanded through splitmix64 and
+folded into whatever that family accepts as a state or key, so `T(12345)`,
+`Gen(12345)` and `Random.seed!(T(), 12345)` all agree. A value in the family's
+own representation — its seed vector, or a `UInt128` for PCG — is taken as the
+state itself rather than hashed. See
+[Streams & Substreams](streams.md) for the full table.
+
 ## How do I run truly parallel simulations?
 
 Never share one generator object across tasks/workers. Give each worker its

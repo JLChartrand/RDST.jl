@@ -133,7 +133,7 @@ above. Exported types:
 | RNGs | Stream generators |
 |---|---|
 | `Xoroshiro128p`, `Xoroshiro128ss`, `Xoroshiro128pp` | `Xoroshiro128pGen`, `Xoroshiro128ssGen`, `Xoroshiro128ppGen` |
-| `Xoshiro256p`, `Xoshiro256ss`, `Xoshiro256pp` | `Xoshiro256plusGen`, `Xoshiro256ssGen`, `Xoshiro256ppGen` |
+| `Xoshiro256p`, `Xoshiro256ss`, `Xoshiro256pp` | `Xoshiro256plusGen` (also `Xoshiro256pGen`), `Xoshiro256ssGen`, `Xoshiro256ppGen` |
 | `Xoshiro512p`, `Xoshiro512ss`, `Xoshiro512pp` | `Xoshiro512pGen`, `Xoshiro512ssGen`, `Xoshiro512ppGen` |
 
 Constructors accept an `NTuple{N,UInt64}` or a `Vector{<:Unsigned}` of length

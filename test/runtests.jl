@@ -669,6 +669,82 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
     end
 
 
+    @testset "uniform constructor and generator-object API" begin
+        # The package promises one interface across every generator. That claim
+        # is only as good as its weakest family, so it is asserted here for all
+        # sixteen, rather than for the handful the interface testset samples.
+        #
+        # The seeding rule under test: a value in the family's own
+        # representation (its seed vector, or a UInt128 for PCG) IS the state or
+        # key; any other integer is a seed, expanded through splitmix64. So
+        # `T(12345)` means the same kind of thing everywhere, and matches
+        # `Random.seed!(T(), 12345)`.
+        R = RandomDataStreams
+        families = [
+            ("MRG32k3a",        MRG32k3a,          MRG32k3aGen,        [1, 2, 3, 4, 5, 6]),
+            ("Xoroshiro128p",   R.Xoroshiro128p,   R.Xoroshiro128pGen,  UInt64[1, 2]),
+            ("Xoroshiro128ss",  R.Xoroshiro128ss,  R.Xoroshiro128ssGen, UInt64[1, 2]),
+            ("Xoroshiro128pp",  R.Xoroshiro128pp,  R.Xoroshiro128ppGen, UInt64[1, 2]),
+            ("Xoshiro256p",     Xoshiro256p,       Xoshiro256plusGen,   UInt64[1, 2, 3, 4]),
+            ("Xoshiro256ss",    R.Xoshiro256ss,    R.Xoshiro256ssGen,   UInt64[1, 2, 3, 4]),
+            ("Xoshiro256pp",    R.Xoshiro256pp,    R.Xoshiro256ppGen,   UInt64[1, 2, 3, 4]),
+            ("Xoshiro512p",     R.Xoshiro512p,     R.Xoshiro512pGen,    UInt64[1, 2, 3, 4, 5, 6, 7, 8]),
+            ("Xoshiro512ss",    R.Xoshiro512ss,    R.Xoshiro512ssGen,   UInt64[1, 2, 3, 4, 5, 6, 7, 8]),
+            ("Xoshiro512pp",    R.Xoshiro512pp,    R.Xoshiro512ppGen,   UInt64[1, 2, 3, 4, 5, 6, 7, 8]),
+            ("PCG64",           PCG64,             PCG64Gen,            UInt64[1, 2]),
+            ("PCG64DXSM",       PCG64DXSM,         PCG64DXSMGen,        UInt64[1, 2]),
+            ("Philox4x32-10",   PhiloxRNG,         PhiloxGen,           UInt32[1, 2]),
+            ("Philox4x64-10",   Philox4x64RNG,     Philox4x64Gen,       UInt64[1, 2]),
+            ("Threefry4x32-20", Threefry4x32RNG,   Threefry4x32Gen,     UInt32[1, 2, 3, 4]),
+            ("Threefry4x64-20", Threefry4x64RNG,   Threefry4x64Gen,     UInt64[1, 2, 3, 4]),
+        ]
+        @test length(families) == 16
+
+        for (name, T, G, seed) in families
+            @testset "$name" begin
+                # three constructor forms, on both the stream and the generator
+                @test G()      isa R.AbstractRNGStream
+                @test G(12345) isa R.AbstractRNGStream
+                @test G(seed)  isa R.AbstractRNGStream
+                @test T()      isa R.AbstractStreamableRNG
+                @test T(12345) isa R.AbstractStreamableRNG
+                @test T(seed)  isa R.AbstractStreamableRNG
+
+                # an integer seed is deterministic, and means the same thing as
+                # seeding after construction
+                @test rand(T(777)) == rand(T(777))
+                @test rand(next_stream!(G(777))) == rand(next_stream!(G(777)))
+                r = T()
+                Random.seed!(r, 777)
+                r2 = T(777)                       # one instance, not one per draw
+                @test [rand(r) for _ in 1:4] == [rand(r2) for _ in 1:4]
+
+                # the generator object saves, restores and reseeds its position
+                g = G(seed)
+                st = get_state(g)
+                firststream = get_state(next_stream!(g))
+                next_stream!(g); next_stream!(g)
+                set_state!(g, st)
+                @test get_state(next_stream!(g)) == firststream
+                srand!(g, seed)
+                @test get_state(next_stream!(g)) == firststream
+                @test occursin(r"\S", sprint(show, g))
+
+                # the portable navigation contract, returning the object each time
+                x = next_stream!(G(seed))
+                @test next_substream!(x)  === x
+                @test reset_substream!(x) === x
+                @test reset_stream!(x)    === x
+                @test advance_state!(x, 0, 5)  === x
+                @test advance_state!(x, 0, -5) === x
+                @test set_state!(x, get_state(x)) === x
+                @test copy(x) !== x
+                @test occursin(r"\S", sprint(show, x))
+            end
+        end
+    end
+
+
     @testset "uniform stream interface" begin
         # code written against AbstractStreamableRNG must work for every
         # generator: same navigation, same get_state/set_state! round-trip,

@@ -262,6 +262,48 @@ What the package does not provide: filling a `CuArray`, or any device-side
 above, and keep the stream objects on the host for what they are good at —
 assigning non-overlapping work and replaying it identically.
 
+## One interface, every generator
+
+The whole point of the two object families is that code written against them
+does not name a generator. Every family in the package answers to the same
+calls, with the same meanings — the table below is asserted for all sixteen
+generators in the test suite, not just documented.
+
+On the generator object:
+
+| call | meaning |
+|---|---|
+| `Gen()` | seeded with the package default, `12345` |
+| `Gen(12345)` | seeded with an integer |
+| `Gen(v)` | seeded with the family's own seed vector |
+| `next_stream!(gen)` | the next non-overlapping stream |
+| `srand!(gen, seed)` | reset the seed the next `next_stream!` will use |
+| `get_state(gen)`, `set_state!(gen, s)` | save and restore it |
+
+On the stream:
+
+| call | meaning |
+|---|---|
+| `T()`, `T(12345)`, `T(v)` | the same three seeding forms |
+| `next_substream!`, `reset_substream!`, `reset_stream!` | navigation; each returns the generator |
+| `advance_state!(rng, e, c)` | move by `2^e + c` draws, negative allowed |
+| `get_state`, `set_state!` | save and restore the position only |
+| `srand!`, `Random.seed!` | reseed, resetting both boundaries |
+| `copy`, `show`, the full `Random` API | as for any `AbstractRNG` |
+
+**The seeding rule.** A value in the family's own representation — its seed
+vector, or a `UInt128` for PCG — *is* the state or key. Any other integer is a
+*seed*, expanded through splitmix64 and folded into whatever the family
+accepts. So `MRG32k3aGen(12345)`, `Xoshiro256ppGen(12345)`, `PhiloxGen(12345)`
+and `PCG64Gen(12345)` all mean the same kind of thing, and `T(12345)` is
+equivalent to `Random.seed!(T(), 12345)` everywhere.
+
+**What is not portable.** `short_jump!` and `long_jump!` are the xoshiro and
+PCG spelling of a jump by exactly the substream and stream distance. Use
+`next_substream!` in code meant to work with any generator. `long_jump!` has no
+meaning at all for a counter-based generator, where moving to another stream
+means taking another key — an operation that belongs to the generator object.
+
 ## Guarantees
 
 - Streams produced by successive calls to `next_stream!` on the same generator

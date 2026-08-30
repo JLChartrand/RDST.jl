@@ -60,6 +60,16 @@ const PCG_INCREMENT = (UInt128(6364136223846793005) << 64) | UInt128(14426950408
 const _PCG_SHORT_JUMP = (UInt128(1) << 64) + UInt128(1)
 const _PCG_LONG_JUMP  = (UInt128(1) << 32) * _PCG_SHORT_JUMP + UInt128(1)
 
+"An integer seed becomes a 128-bit state through splitmix64, as everywhere else."
+_pcg_seed_state(seed::UInt64) =
+    ((w = _splitmix_words(seed, 2); (UInt128(w[1]) << 64) | UInt128(w[2])))
+
+"Two 64-bit words are the state itself, high word first."
+function _pcg_words_state(v::AbstractVector{<:Integer})
+    length(v) == 2 || throw(ArgumentError("a PCG state must have 2 elements (high and low 64 bits)"))
+    return (UInt128(v[1] % UInt64) << 64) | UInt128(v[2] % UInt64)
+end
+
 @inline _pcg_mult(::Val{:xsl_rr}) = PCG_MULT_128
 @inline _pcg_mult(::Val{:dxsm})   = PCG_MULT_CM
 
@@ -123,19 +133,19 @@ mutable struct PCGRNG{V} <: AbstractStreamableRNG
     Bg::UInt128   # start point of the current substream
     Ig::UInt128   # start point of the current stream
 
-    PCGRNG{V}(s::UInt128) where {V} = new{V}(s, s, s)
+    PCGRNG{V}(s::UInt128) where {V} = new{V}(s, s, s)   # a UInt128 is the state itself
     PCGRNG{V}(c::UInt128, b::UInt128, i::UInt128) where {V} = new{V}(c, b, i)
 end
 
-# Every 128-bit value is a valid LCG state: unlike the xoshiro families there is
-# no forbidden seed, and unlike MRG32k3a there is nothing to check.
-PCGRNG{V}(s::Integer) where {V} = PCGRNG{V}(s % UInt128)
-PCGRNG{V}() where {V} = PCGRNG{V}(PCG_INCREMENT)
+# Seeding follows the package-wide rule: a value in the state's own
+# representation -- a `UInt128`, or a two-element vector of 64-bit words -- is
+# the state itself, and any other integer is a seed, expanded through
+# splitmix64. Every 128-bit value is a valid LCG state, so unlike the xoshiro
+# families there is no forbidden seed and nothing to check.
+PCGRNG{V}() where {V} = PCGRNG{V}(12345)
+PCGRNG{V}(seed::Integer) where {V} = PCGRNG{V}(_pcg_seed_state(UInt64(seed)))
 
-function PCGRNG{V}(v::AbstractVector{<:Integer}) where {V}
-    length(v) == 2 || throw(ArgumentError("a PCG seed must have 2 elements (high and low 64 bits)"))
-    return PCGRNG{V}((UInt128(v[1] % UInt64) << 64) | UInt128(v[2] % UInt64))
-end
+PCGRNG{V}(v::AbstractVector{<:Integer}) where {V} = PCGRNG{V}(_pcg_words_state(v))
 
 Base.copy(rng::PCGRNG{V}) where {V} = PCGRNG{V}(rng.Cg, rng.Bg, rng.Ig)
 
@@ -203,15 +213,10 @@ end
 """
 Seeds a generator, resetting the stream and substream boundaries to the seed.
 """
-function srand!(rng::PCGRNG, seed::Integer)
-    rng.Cg = rng.Bg = rng.Ig = seed % UInt128
-    return rng
-end
+srand!(rng::PCGRNG, seed::UInt128) = (rng.Cg = rng.Bg = rng.Ig = seed; rng)
+srand!(rng::PCGRNG, seed::Integer) = srand!(rng, _pcg_seed_state(UInt64(seed)))
 
-function srand!(rng::PCGRNG, seed::AbstractVector{<:Integer})
-    length(seed) == 2 || throw(ArgumentError("a PCG seed must have 2 elements (high and low 64 bits)"))
-    return srand!(rng, (UInt128(seed[1] % UInt64) << 64) | UInt128(seed[2] % UInt64))
-end
+srand!(rng::PCGRNG, seed::AbstractVector{<:Integer}) = srand!(rng, _pcg_words_state(seed))
 
 """
     reset_stream!(rng) -> rng
@@ -314,13 +319,10 @@ mutable struct PCGGen{V} <: AbstractRNGStream
     PCGGen{V}(seed::UInt128) where {V} = new{V}(seed)
 end
 
-PCGGen{V}() where {V} = PCGGen{V}(PCG_INCREMENT)
-PCGGen{V}(seed::Integer) where {V} = PCGGen{V}(seed % UInt128)
+PCGGen{V}() where {V} = PCGGen{V}(12345)
+PCGGen{V}(seed::Integer) where {V} = PCGGen{V}(_pcg_seed_state(UInt64(seed)))
 
-function PCGGen{V}(seed::AbstractVector{<:Integer}) where {V}
-    length(seed) == 2 || throw(ArgumentError("a PCG seed must have 2 elements (high and low 64 bits)"))
-    return PCGGen{V}((UInt128(seed[1] % UInt64) << 64) | UInt128(seed[2] % UInt64))
-end
+PCGGen{V}(seed::AbstractVector{<:Integer}) where {V} = PCGGen{V}(_pcg_words_state(seed))
 
 """
 Given an RNG generator object, returns the next RNG stream.
@@ -336,7 +338,9 @@ end
 
 Resets the seed that the next `next_stream!` call will use.
 """
-srand!(gen::PCGGen, seed::Integer) = (gen.nextSeed = seed % UInt128; gen)
+srand!(gen::PCGGen, seed::UInt128) = (gen.nextSeed = seed; gen)
+srand!(gen::PCGGen, seed::Integer) = srand!(gen, _pcg_seed_state(UInt64(seed)))
+srand!(gen::PCGGen, seed::AbstractVector{<:Integer}) = srand!(gen, _pcg_words_state(seed))
 
 """
     get_state(gen::PCGGen) -> UInt128
@@ -350,7 +354,7 @@ get_state(gen::PCGGen) = gen.nextSeed
 
 Restores the seed of the next stream, as returned by `get_state(gen)`.
 """
-set_state!(gen::PCGGen, seed) = srand!(gen, seed)
+set_state!(gen::PCGGen, seed) = srand!(gen, seed % UInt128)
 
 # Names and display ------------------------------------------------------------
 

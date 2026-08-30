@@ -192,6 +192,13 @@ mutable struct LinRNG{N,S} <: AbstractStreamableRNG
 end
 
 LinRNG{N,S}(v::Vector{<:Unsigned}) where {N,S} = LinRNG{N,S}(NTuple{N,UInt64}(v))
+
+# Uniform constructors: every family accepts no argument (the package default
+# seed, 12345) and a plain integer, expanded through splitmix64 because a
+# xoshiro state must be well mixed and must not be all zero.
+LinRNG{N,S}() where {N,S} = LinRNG{N,S}(12345)
+LinRNG{N,S}(seed::Integer) where {N,S} =
+    LinRNG{N,S}(NTuple{N,UInt64}(_seed_words_nonzero(UInt64(seed), N)))
 LinRNG{N,S}(u::Vector{<:Unsigned}, v::Vector{<:Unsigned}, w::Vector{<:Unsigned}) where {N,S} =
     LinRNG{N,S}(NTuple{N,UInt64}(u), NTuple{N,UInt64}(v), NTuple{N,UInt64}(w))
 
@@ -345,6 +352,9 @@ mutable struct LinGen{N,S} <: AbstractRNGStream
         new{N,S}(copy(newx))
     end
 end
+
+LinGen{N,S}() where {N,S} = LinGen{N,S}(12345)
+LinGen{N,S}(seed::Integer) where {N,S} = LinGen{N,S}(_seed_words_nonzero(UInt64(seed), N))
 
 function _variant_name(::Type{<:LinRNG{2,:plus}});      "Xoroshiro128plus";   end
 function _variant_name(::Type{<:LinRNG{2,:starstar}});  "Xoroshiro128starstar"; end
@@ -519,6 +529,14 @@ Stream generator minting non-overlapping `Xoshiro256p` streams via a long
 jump (2^192 values) per call. Seeds are 4 `UInt64` words.
 """
 const Xoshiro256plusGen = LinGen{4,:plus}
+
+"""
+    Xoshiro256pGen <: AbstractRNGStream
+
+Regular spelling of [`Xoshiro256plusGen`](@ref), matching `Xoshiro256ssGen`,
+`Xoshiro512pGen` and the rest. The two names are the same type.
+"""
+const Xoshiro256pGen = Xoshiro256plusGen
 
 """
     Xoshiro256ssGen <: AbstractRNGStream

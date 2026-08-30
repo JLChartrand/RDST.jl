@@ -44,6 +44,12 @@ CBRNG{B,W,N,K}(key::AbstractVector{<:Integer}, ctr::UInt128 = UInt128(0)) where 
 
 CBRNG{B,W,N,K}() where {B,W,N,K} = CBRNG{B,W,N,K}(ntuple(_ -> zero(W), Val(K)))
 
+# Uniform constructor: an integer seed selects the key through splitmix64, the
+# same expansion `Random.seed!` uses. To address a specific key and counter --
+# the stateless path -- pass them explicitly instead.
+CBRNG{B,W,N,K}(seed::Integer) where {B,W,N,K} =
+    CBRNG{B,W,N,K}(NTuple{K,W}([w % W for w in _splitmix_words(UInt64(seed), K)]))
+
 copy(rng::CBRNG{B,W,N,K}) where {B,W,N,K} =
     CBRNG{B,W,N,K}(rng.ctr, rng.key, rng.buffer, rng.idx)
 
@@ -390,6 +396,12 @@ end
 CBGen{B,W,N,K}() where {B,W,N,K} = CBGen{B,W,N,K}(ntuple(_ -> zero(W), Val(K)))
 CBGen{B,W,N,K}(seed::AbstractVector{<:Integer}) where {B,W,N,K} =
     CBGen{B,W,N,K}(_key_tuple(CBRNG{B,W,N,K}, seed))
+
+# Uniform constructor: a plain integer seed, expanded through splitmix64 into
+# the key words, so that `PhiloxGen(12345)` means the same kind of thing as
+# `MRG32k3aGen(12345)`.
+CBGen{B,W,N,K}(seed::Integer) where {B,W,N,K} =
+    CBGen{B,W,N,K}(NTuple{K,W}([w % W for w in _splitmix_words(UInt64(seed), K)]))
 
 """
     stream_key(::Val{B}, seed) -> key
