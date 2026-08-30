@@ -575,6 +575,70 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
     end
 
 
+    @testset "PCG stream and substream addressing" begin
+        # The jump identities above say a jump of n lands n draws ahead. This
+        # says the stream/substream *composition* lands where the layout
+        # claims: stream k at k*D_stream, its substream j at
+        # k*D_stream + j*D_substream, with the substreams of one stream fitting
+        # inside the stream spacing.
+        DS = RandomDataStreams._PCG_SHORT_JUMP
+        DL = RandomDataStreams._PCG_LONG_JUMP
+
+        # 2^32 substreams of 2^64 draws must end below the next stream's start
+        @test (UInt128(2)^32 - 1) * DS + UInt128(2)^64 < DL
+
+        for (T, G, mult) in ((PCG64,     PCG64Gen,     RandomDataStreams.PCG_MULT_128),
+                             (PCG64DXSM, PCG64DXSMGen, RandomDataStreams.PCG_MULT_CM))
+            seed = UInt128(20260830)
+
+            gen = G(seed)
+            for k in 0:3
+                rng = next_stream!(gen)
+                @test get_state(rng) ==
+                      RandomDataStreams._lcg_advance(seed, (UInt128(k) * DL) % UInt128, mult)
+            end
+
+            gen = G(seed)
+            for k in 0:2
+                rng = next_stream!(gen)
+                for j in 0:3
+                    @test get_state(rng) == RandomDataStreams._lcg_advance(
+                        seed, (UInt128(k) * DL + UInt128(j) * DS) % UInt128, mult)
+                    rand(rng); rand(rng)          # consumption must not move the anchor
+                    next_substream!(rng)
+                end
+            end
+
+            # the three checkpoints move exactly as the interface promises
+            r = T(seed); short_jump!(r)
+            @test r.Cg == r.Bg && r.Ig == seed
+            r = T(seed); long_jump!(r)
+            @test r.Cg == r.Bg == r.Ig != seed
+
+            # streams and substreams are disjoint in practice, not just in theory
+            gen = G(seed)
+            vals = [[rand(s, UInt64) for _ in 1:5000] for s in (next_stream!(gen), next_stream!(gen),
+                                                                next_stream!(gen), next_stream!(gen))]
+            @test length(unique(vcat(vals...))) == 4 * 5000
+
+            rng = next_stream!(G(seed))
+            subs = UInt64[]
+            for _ in 1:4
+                append!(subs, [rand(rng, UInt64) for _ in 1:5000])
+                next_substream!(rng)
+            end
+            @test length(unique(subs)) == 4 * 5000
+
+            # srand! on the generator object rewinds what next_stream! hands out
+            gen = G(seed)
+            first_stream = get_state(next_stream!(gen))
+            next_stream!(gen); next_stream!(gen)
+            srand!(gen, seed)
+            @test get_state(next_stream!(gen)) == first_stream
+        end
+    end
+
+
     @testset "PCG increment-based streams are not independent" begin
         # Why the package fixes the increment instead of exposing it as a
         # stream parameter, as PCG and NumPy do. Writing t_n = s_n + h and
