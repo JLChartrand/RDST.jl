@@ -19,6 +19,20 @@
     return result
 end
 
+# The wide unsigned types above are defined on `::Type`, which catches a direct
+# `rand(rng, UInt32)` but not the `Sampler` machinery behind `rand!` and the
+# array/range methods -- `rand!(rng, Vector{UInt32})` was a MethodError. Route
+# those to the same implementation, so that filling an array and drawing in a
+# loop give the same sequence.
+#
+# UInt64 is deliberately left out: it already has a `SamplerType` method below,
+# built from two [1,2) draws, which does *not* agree with the 16-bit assembly
+# above. Reconciling the two changes the output of one spelling or the other,
+# so it is left as it stands.
+for S in (UInt32, UInt128)
+    @eval @inline rand(rng::MRG32k3a, ::Random.SamplerType{$S})::$S = rand(rng, $S)
+end
+
 @inline rand(rng::MRG32k3a, ::Random.SamplerType{Int8})::Int8 = reinterpret(Int8, rand(rng, UInt8))
 @inline rand(rng::MRG32k3a, ::Random.SamplerType{Int16})::Int16 = reinterpret(Int16, rand(rng, UInt16))
 @inline rand(rng::MRG32k3a, ::Random.SamplerType{Int32})::Int32 = reinterpret(Int32, rand(rng, UInt32))

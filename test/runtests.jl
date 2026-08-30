@@ -548,6 +548,48 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         end
     end
 
+
+    @testset "array fill matches repeated draws" begin
+        # rand! on a counter-based generator writes whole blocks straight into
+        # the array. It must produce exactly what the scalar path would have
+        # produced, in the same order and leaving the same state -- including
+        # when the generator does not start on a block boundary, and for
+        # lengths that do not divide the block size.
+        variants = [
+            ("Philox4x32-10",   () -> next_stream!(PhiloxGen()),       UInt32),
+            ("Philox4x64-10",   () -> next_stream!(Philox4x64Gen()),   UInt64),
+            ("Threefry4x32-20", () -> next_stream!(Threefry4x32Gen()), UInt32),
+            ("Threefry4x64-20", () -> next_stream!(Threefry4x64Gen()), UInt64),
+        ]
+        for (name, mk, W) in variants
+            @testset "$name" begin
+                for T in (Float64, UInt64, W), n in (0, 1, 3, 4, 5, 8, 9, 17), pre in (0, 1, 2, 3)
+                    a, b = mk(), mk()
+                    for _ in 1:pre                 # start off a block boundary
+                        rand(a, W); rand(b, W)
+                    end
+                    v = Vector{T}(undef, n)
+                    rand!(a, v)
+                    @test v == [rand(b, T) for _ in 1:n]
+                    @test get_state(a)[1] == get_state(b)[1]     # counter
+                    @test get_state(a)[4] == get_state(b)[4]     # index in block
+                end
+            end
+        end
+
+        # MRG32k3a defined its wide unsigned draws on `::Type` only, so the
+        # Sampler machinery behind rand! had no method and this threw.
+        a, b = MRG32k3a(), MRG32k3a()
+        v = Vector{UInt32}(undef, 5)
+        rand!(a, v)
+        @test v == [rand(b, UInt32) for _ in 1:5]
+
+        a, b = MRG32k3a(), MRG32k3a()
+        w = Vector{UInt128}(undef, 3)
+        rand!(a, w)
+        @test w == [rand(b, UInt128) for _ in 1:3]
+    end
+
     @testset "show methods" begin
         io = IOBuffer()
         show(io, MRG32k3a())

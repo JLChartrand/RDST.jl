@@ -165,29 +165,57 @@ produced for every supported type, plus reset/jump/state round-trips.
 
 ## Performance snapshot
 
-Reproduce with `julia -O3 --project=. scripts/benchmarks/throughput.jl`, which
-prints the Julia version and CPU it ran on. The figures below are one such run,
-single core, Julia 1.12.5 on a Skylake x86_64; treat them as ratios rather than
-absolutes, and re-run the script on the machine that matters to you.
+Reproduce with `julia -O3 scripts/benchmarks/throughput.jl`, which prints the
+Julia version and CPU it ran on. Figures below are one run on a Skylake x86_64,
+Julia 1.12.5, single core; treat them as ratios and re-run on the machine that
+matters to you.
 
-Draws per second, in millions:
+**The measurement method is part of the result.** Naive loops disagree by
+nearly a factor of two, so the script fixes one method and states it:
+BenchmarkTools with the minimum sample; scalar draws accumulated with `xor` on
+the raw bits, because a floating-point `+` chain has four cycles of latency —
+longer than a draw from the fastest generators here, so it would measure the
+adder; nothing written to memory in the scalar loop, because storing every draw
+turns the benchmark into one of memory bandwidth (the same xoshiro reads
+867 M/s with an accumulator and 481 M/s storing into an 8 MB vector); and
+`rand!` measured into a 4096-element vector, small enough to stay in cache.
+
+Scalar draws, millions per second:
 
 | Generator | `Float64` | `UInt64` | `UInt32` |
 |---|---|---|---|
-| `MRG32k3a` | 208 | 43 | 87 |
-| `Xoroshiro128p` | 741 | 1024 | 1011 |
-| `Xoshiro256p` | 772 | 1129 | 1126 |
-| `Xoshiro512p` | 626 | 878 | 866 |
-| `Philox4x32-10` | 91 | 106 | 255 |
-| `Philox4x64-10` | 200 | 257 | 257 |
-| `Threefry4x32-20` | 82 | 90 | 174 |
-| `Threefry4x64-20` | 139 | 149 | 150 |
+| `MRG32k3a` | 204 | 44 | 88 |
+| `Xoroshiro128p` | 695 | 941 | 1089 |
+| `Xoshiro256p` | 788 | 1167 | 1221 |
+| `Xoshiro512p` | 570 | 798 | 742 |
+| `Philox4x32-10` | 93 | 109 | 272 |
+| `Philox4x64-10` | 210 | 275 | 265 |
+| `Threefry4x32-20` | 84 | 92 | 183 |
+| `Threefry4x64-20` | 147 | 153 | 154 |
 
-Raw bijection rate, in millions of 4-word blocks per second: `philox4x32-10`
-70, `philox4x64-10` 75, `threefry4x32-20` 45, `threefry4x64-20` 45. Comparing
-these with the table above shows that roughly a third of the cost of a
-counter-based draw is the buffer machinery around the cipher rather than the
-cipher itself; filling arrays a whole block at a time would be the next lever.
+Array fill with `rand!`, millions of elements per second:
 
-Every generator draws with zero allocations, as do `short_jump!` and
-`long_jump!`.
+| Generator | `Float64` | `UInt64` | `UInt32` |
+|---|---|---|---|
+| `MRG32k3a` | 154 | 75 | 88 |
+| `Xoroshiro128p` | 554 | 581 | 581 |
+| `Xoshiro256p` | 487 | 519 | 520 |
+| `Xoshiro512p` | 379 | 394 | 426 |
+| `Philox4x32-10` | 157 | 177 | 348 |
+| `Philox4x64-10` | 359 | 360 | 257 |
+| `Threefry4x32-20` | 100 | 106 | 206 |
+| `Threefry4x64-20` | 213 | 181 | 156 |
+
+The counter-based generators are the ones that gain from filling an array:
+`rand!` produces whole blocks straight into it, so the counter, the block
+buffer and the index are touched once per block instead of once per draw.
+Philox4x64-10 goes from 210 to 359 million `Float64` per second, a factor of
+1.7. The recurrence-based generators have no such block to exploit and are
+*slower* in bulk than in the accumulator loop, by the cost of the stores.
+
+Two combinations get no block path and fall back to the scalar loop: `UInt32`
+from a 64-bit family, and any 64-bit draw taken while the generator sits
+mid-block because the caller has been mixing widths.
+
+Every generator draws with zero allocations, in both paths, as do `short_jump!`
+and `long_jump!`.

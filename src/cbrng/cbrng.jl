@@ -146,6 +146,115 @@ end
 
 rand(rng::CBRNG, ::Random.SamplerType{Char}) = Char(rand(rng, 0x0000:0xd7ff))
 
+# Bulk generation ---------------------------------------------------------------
+#
+# Drawing one value at a time reloads and rewrites the counter, the block buffer
+# and the index on every call; measured against the raw bijection rate, that
+# accounting is roughly a third of the cost of a counter-based draw. When a
+# whole array is asked for, the blocks can go straight into it with the state
+# touched once per block instead.
+#
+# The values produced are exactly those the scalar path would have produced, in
+# the same order: the fast loop only runs while the generator sits on a block
+# boundary, and the ragged head and tail go through the ordinary draw path.
+
+"`true` when the next draw will start a fresh block."
+@inline _block_aligned(rng::CBRNG{B,W,N,K}) where {B,W,N,K} = rng.idx == N + 1
+
+@inline function _next_block!(rng::CBRNG{B,W,N,K}) where {B,W,N,K}
+    blk = bijection(Val(B), _ctr_words(W, Val(N), rng.ctr), rng.key)
+    rng.ctr = (rng.ctr + one(UInt128)) & _ctr_mask(W, Val(N))
+    rng.buffer = blk
+    return blk
+end
+
+"Fill `A` with native words, a whole block at a time."
+function _fill_words!(rng::CBRNG{B,W,N,K}, A::AbstractArray{W}) where {B,W,N,K}
+    i, stop = firstindex(A), lastindex(A)
+    while i <= stop && !_block_aligned(rng)          # at most N ordinary draws
+        @inbounds A[i] = next_word(rng)
+        i += 1
+    end
+    while i + N - 1 <= stop
+        blk = _next_block!(rng)
+        @inbounds for j in 1:N
+            A[i + j - 1] = blk[j]
+        end
+        i += N
+    end
+    while i <= stop                                  # tail, buffered as usual
+        @inbounds A[i] = next_word(rng)
+        i += 1
+    end
+    return A
+end
+
+"Fill `A` with `f` applied to raw 64-bit outputs, a whole block at a time."
+function _fill_u64!(f::F, rng::CBRNG{B,UInt64,N,K}, A::AbstractArray) where {F,B,N,K}
+    i, stop = firstindex(A), lastindex(A)
+    for _ in 1:N
+        (i > stop || _block_aligned(rng)) && break
+        @inbounds A[i] = f(next(rng))
+        i += 1
+    end
+    if _block_aligned(rng)
+        while i + N - 1 <= stop
+            blk = _next_block!(rng)
+            @inbounds for j in 1:N
+                A[i + j - 1] = f(blk[j])
+            end
+            i += N
+        end
+    end
+    while i <= stop
+        @inbounds A[i] = f(next(rng))
+        i += 1
+    end
+    return A
+end
+
+function _fill_u64!(f::F, rng::CBRNG{B,UInt32,N,K}, A::AbstractArray) where {F,B,N,K}
+    i, stop = firstindex(A), lastindex(A)
+    # A 64-bit draw takes two words, so the pairing can sit off the block
+    # boundary if the caller has been mixing 32- and 64-bit draws; then the
+    # loop below simply never triggers and everything goes the ordinary way.
+    for _ in 1:N
+        (i > stop || _block_aligned(rng)) && break
+        @inbounds A[i] = f(next(rng))
+        i += 1
+    end
+    if _block_aligned(rng)
+        half = N ÷ 2
+        while i + half - 1 <= stop
+            blk = _next_block!(rng)
+            @inbounds for j in 1:half
+                A[i + j - 1] = f((UInt64(blk[2j]) << 32) | UInt64(blk[2j - 1]))
+            end
+            i += half
+        end
+    end
+    while i <= stop
+        @inbounds A[i] = f(next(rng))
+        i += 1
+    end
+    return A
+end
+
+# The conversion the scalar Float64 path applies to a raw 64-bit output; kept
+# identical so that `rand!` and repeated `rand` agree bit for bit.
+@inline _close_open01(u::UInt64) =
+    reinterpret(Float64, 0x3ff0000000000000 | (u & 0x000fffffffffffff)) - 1.0
+
+Random.rand!(rng::CBRNG{B,W,N,K}, A::Array{W}, ::Random.SamplerType{W}) where {B,W,N,K} =
+    _fill_words!(rng, A)
+
+Random.rand!(rng::CBRNG{B,UInt32,N,K}, A::Array{UInt64}, ::Random.SamplerType{UInt64}) where {B,N,K} =
+    _fill_u64!(identity, rng, A)
+
+Random.rand!(rng::CBRNG, A::Array{Float64},
+             ::Random.SamplerTrivial{Random.CloseOpen01{Float64}}) =
+    _fill_u64!(_close_open01, rng, A)
+
 # Streams and substreams -------------------------------------------------------
 # A stream is a key; a substream is a slice of the counter space of that key.
 
