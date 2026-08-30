@@ -4,7 +4,7 @@
 
 @inline rand(rng::MRG32k3a, ::Random.SamplerType{UInt16})::UInt16 =
     UInt64(let (p1, p2) = next_pair!(rng)
-        p1 > p2 ? (p1 - p2) : (p1 + PMF.m1 - p2)
+        combine(p1, p2)
     end) % UInt16
 
 @inline rand(rng::MRG32k3a, ::Random.SamplerType{UInt8})::UInt8 = rand(rng, UInt16) % UInt8
@@ -47,7 +47,7 @@ Produces a raw random number with 32 bits of precision.
 """
 @inline function rand(rng::MRG32k3a)::Float64
     p1, p2 = next_pair!(rng)
-    return p1 > p2 ? (p1 - p2) * PMF.norm : (p1 + PMF.m1 - p2) * PMF.norm
+    return combine(p1, p2) * PMF.norm
 end
 
 rand(rng::MRG32k3a, ::Type{Float64}) = rand(rng)

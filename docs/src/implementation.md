@@ -13,7 +13,31 @@ u  = (p1 − p2) / m1   (with wrap-around) ∈ [0, 1)
 
 The combined generator has period ≈ 2^191.
 
-### Modular arithmetic without overflow
+### Modular arithmetic without overflow, and without tests
+
+The recurrence follows Vigna's testless formulation
+(<https://github.com/vigna/MRG32k3a>). The two negative coefficients are
+carried as positive numbers and subtracted, and a multiple of the modulus is
+added, so the argument of `%` can never be negative and the residual needs no
+correction afterwards; the combination `z = p1 - p2 mod m1` is done with an
+arithmetic shift rather than a comparison. Worth 15% here (204 to 235 million
+`Float64` per second), and the stream is unchanged bit for bit.
+
+It is worth 15% and not the factor of two Vigna reports, because most of what
+he removes by hand LLVM already removes for us: the previous formulation, with
+its two residual corrections and its comparison, compiled to 72 instructions
+with **no branch and no division** — the corrections had become conditional
+moves and the constant moduli multiply-shift sequences. What is left to gain is
+the fix-up a *signed* remainder needs, which disappears once the dividend is
+known non-negative: 72 instructions become 68.
+
+Two variants measured and rejected: keeping the state in six scalar fields
+instead of a `Vector{Int64}` is *slower* (226 against 235) while breaking the
+constructors and `Cg`; and computing the output from the current state before
+the update, which needs the state kept one step ahead to preserve the stream,
+gives 231 and changes what `get_state` and the jump matrices operate on.
+
+### Modular arithmetic in the jump machinery
 
 All state components stay below `m1 < 2^32`, so products fit in `Float64`
 exactly (< 2^53). The helper `MultModM(a, s, c, m)` computes `(a·s + c) mod m`
@@ -206,7 +230,7 @@ Scalar draws, millions per second:
 
 | Generator | `Float64` | `UInt64` | `UInt32` |
 |---|---|---|---|
-| `MRG32k3a` | 204 | 44 | 88 |
+| `MRG32k3a` | 235 | 47 | 95 |
 | `Xoroshiro128p` | 695 | 941 | 1089 |
 | `Xoshiro256p` | 788 | 1167 | 1306 |
 | `Xoshiro512p` | 570 | 798 | 742 |
@@ -219,7 +243,7 @@ Array fill with `rand!`, millions of elements per second:
 
 | Generator | `Float64` | `UInt64` | `UInt32` |
 |---|---|---|---|
-| `MRG32k3a` | 155 | 43 | 88 |
+| `MRG32k3a` | 166 | 47 | 95 |
 | `Xoroshiro128p` | 545 | 576 | 582 |
 | `Xoshiro256p` | 501 | 520 | 520 |
 | `Xoshiro512p` | 381 | 380 | 427 |

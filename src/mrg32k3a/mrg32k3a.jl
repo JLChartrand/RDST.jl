@@ -47,21 +47,33 @@ Shared by all `rand` methods to avoid code duplication.
 @inline function next_pair!(rng::MRG32k3a)
     Cg = rng.Cg
     @inbounds begin
-        p1 = (PMF.a12 * Cg[2] + PMF.a13 * Cg[1]) % PMF.m1
-        p1 += p1 < 0 ? PMF.m1 : 0
+        # The correction terms keep the argument of `%` non-negative, so the
+        # residual needs no fix-up afterwards (Vigna's testless formulation).
+        p1 = (PMF.a12 * Cg[2] - PMF.a13n * Cg[1] + PMF.corr1) % PMF.m1
 
         Cg[1] = Cg[2]
         Cg[2] = Cg[3]
         Cg[3] = p1
 
-        p2 = (PMF.a21 * Cg[6] + PMF.a23 * Cg[4]) % PMF.m2
-        p2 += p2 < 0 ? PMF.m2 : 0
+        p2 = (PMF.a21 * Cg[6] - PMF.a23n * Cg[4] + PMF.corr2) % PMF.m2
 
         Cg[4] = Cg[5]
         Cg[5] = Cg[6]
         Cg[6] = p2
     end
     return p1, p2
+end
+
+"""
+Combines the two component outputs into `z` in `[1, m1]`.
+
+Branchless: the arithmetic shift yields -1 when `p1 <= p2` and 0 otherwise, so
+the modulus is added exactly when the difference is not already positive. Same
+value as `p1 > p2 ? p1 - p2 : p1 + m1 - p2`, without the test.
+"""
+@inline function combine(p1::Int64, p2::Int64)
+    r = p1 - p2
+    return r - PMF.m1 * ((r - 1) >> 63)
 end
 
 """
