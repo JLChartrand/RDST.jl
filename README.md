@@ -159,12 +159,19 @@ advance_state!(rng, 10, -3)  # jumps n = 2^10 - 3 = 1021 steps forward
 ## Documentation
 
 Full documentation lives in [`docs/`](docs/) and as a PDF in
-[`docs/RandomDataStreams.pdf`](docs/RandomDataStreams.pdf):
+[`docs/RandomDataStreams.pdf`](docs/RandomDataStreams.pdf), regenerated with
+`julia --project=docs docs/make.jl pdf`:
 
 - [Getting started](docs/src/getting_started.md)
 - [Streams & substreams](docs/src/streams.md)
 - [API reference](docs/src/api.md)
 - [Implementation notes](docs/src/implementation.md)
+- [Validation](docs/src/validation.md)
+- [Generator comparison](docs/src/comparison.md)
+
+A runnable tour — the stream model, all four generator families, and a common
+random numbers experiment — is in
+[`notebooks/streams_tour.ipynb`](notebooks/streams_tour.ipynb).
 
 ## References
 
