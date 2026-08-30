@@ -196,8 +196,8 @@ mutable struct LinRNG{N,S} <: AbstractStreamableRNG
     end
 end
 
-const _ZERO_STATE = "the all-zero state is a fixed point of the xoshiro transition: \
-                     the generator would output zeros forever"
+const _ZERO_STATE = "the all-zero state is a fixed point of the xoshiro " *
+                    "transition: the generator would output zeros forever"
 
 """
     checkseed(s::NTuple{N,UInt64}) -> Bool
