@@ -217,22 +217,6 @@ function plan(opts)
     return [(n, s) for s in suites for n in names]
 end
 
-# RNGTest drives TestU01 through `@cfunction($f, ...)`, which needs an
-# executable trampoline for the closure. Apple Silicon forbids writable and
-# executable memory, so no battery can run there whatever the generator; say so
-# once, clearly, instead of failing inside the first run.
-function testu01_available()
-    try
-        f = let x = 1.0
-            () -> x
-        end
-        @cfunction($f, Float64, ())
-        return true
-    catch
-        return false
-    end
-end
-
 function main(args)
     opts = parse_args(args)
     runs = plan(opts)
@@ -247,11 +231,6 @@ function main(args)
     if opts.list
         println("\n--list given, nothing run.")
         return
-    end
-    if !testu01_available()
-        println("\nThis platform cannot build a C callback from a closure, which")
-        println("RNGTest needs to drive TestU01 (Apple Silicon). Nothing can run here.")
-        exit(1)
     end
 
     mkpath(opts.out)
@@ -272,27 +251,43 @@ function main(args)
             println("    SKIPPED: ", sprint(showerror, err))
             continue
         end
-        elapsed = open(log, "w") do io
-            println(io, "# ", opts.battery, " / ", suite, " / ", name)
-            println(io, "# Julia ", VERSION, ", ", Sys.CPU_NAME, ", ", Sys.MACHINE)
-            println(io, "# started ", now())
-            suite == "interleaved" &&
-                println(io, "# ", opts.streams, " streams, ", opts.values, " value(s) each, round-robin")
-            flush(io)
-            # TestU01 writes its report from C. Redirecting the descriptor is
-            # not enough on its own: C stdout is block-buffered when it is not
-            # a terminal, so without the fflush the report is still in the C
-            # buffer when the descriptor is restored and lands on the console
-            # instead of in the log.
-            @elapsed redirect_stdout(io) do
-                try
-                    line_buffer_c_stdout()
-                    set_testu01_verbose(!opts.quiet)
-                    battery(gen)
-                finally
-                    ccall(:fflush, Cint, (Ptr{Cvoid},), C_NULL)
+
+        # RNGTest builds its callback with `@cfunction` over a closure, which
+        # needs an executable trampoline; Apple Silicon forbids memory that is
+        # both writable and executable, and nothing can run there. Catch that
+        # at the real call: a synthetic probe is not trustworthy, since a
+        # closure over a constant compiles to a singleton, needs no trampoline
+        # and succeeds on exactly the platform where the real one fails.
+        elapsed = try
+            open(log, "w") do io
+                println(io, "# ", opts.battery, " / ", suite, " / ", name)
+                println(io, "# Julia ", VERSION, ", ", Sys.CPU_NAME, ", ", Sys.MACHINE)
+                println(io, "# started ", now())
+                suite == "interleaved" &&
+                    println(io, "# ", opts.streams, " streams, ", opts.values, " value(s) each, round-robin")
+                flush(io)
+                # TestU01 writes its report from C. Redirecting the descriptor is
+                # not enough on its own: C stdout is block-buffered when it is not
+                # a terminal, so without the fflush the report is still in the C
+                # buffer when the descriptor is restored and lands on the console
+                # instead of in the log.
+                @elapsed redirect_stdout(io) do
+                    try
+                        line_buffer_c_stdout()
+                        set_testu01_verbose(!opts.quiet)
+                        battery(gen)
+                    finally
+                        ccall(:fflush, Cint, (Ptr{Cvoid},), C_NULL)
+                    end
                 end
             end
+        catch err
+            if occursin("closures are not supported", sprint(showerror, err))
+                println("\nThis platform cannot build a C callback from a closure,")
+                println("which RNGTest needs to drive TestU01. Nothing can run here.")
+                exit(1)
+            end
+            rethrow()
         end
 
         open(index, "a") do io

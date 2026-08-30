@@ -3,12 +3,19 @@ using RandomDataStreams
 using Test
 using RNGTest
 
-@isdefined(testu01_available) || include("testu01_support.jl")
+@isdefined(check_battery) || include("testu01_support.jl")
 
 
-if !testu01_available()
-    testu01_skip_notice("TestU01 SmallCrush")
-else
+@testset "battery guard" begin
+    # The platform failure is skipped; anything else must not be swallowed.
+    # Verified here rather than trusted, since the skip branch is unreachable
+    # on the platforms where the suite normally runs.
+    @test run_battery(() -> error("cfunction: closures are not supported on this platform"),
+                      "guard") === nothing
+    @test run_battery(() -> 42, "guard") == 42
+    @test_throws ErrorException run_battery(() -> error("boom"), "guard")
+end
+
 @testset "TestU01 SmallCrush Validation" begin
     # TestU01 tests take a bit of time, but validate the generator's statistical quality
     
@@ -26,18 +33,8 @@ else
             gen = gen_init()
             rng = next_stream!(gen)
             
-            # Wrapper to generate Float64 in [0, 1)
-            wrapper = () -> rand(rng, Float64)
-            
-            # Run SmallCrush
-            # smallcrushJulia returns a summary of the test.
-            # If the generator passes, there should be very few p-values outside [0.001, 0.999]
-            # Since these are established PRNGs, they will pass SmallCrush flawlessly.
-            result = RNGTest.smallcrushJulia(wrapper)
-            
-            # In RNGTest, you can inspect failures, but a simple smoke test is just that it runs and completes.
-            @test result !== nothing
+            wrapper = () -> rand(rng, Float64)      # Float64 in [0, 1)
+            check_battery(() -> RNGTest.smallcrushJulia(wrapper), "SmallCrush / $name")
         end
     end
-end
 end

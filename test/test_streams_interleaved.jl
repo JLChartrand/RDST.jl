@@ -15,7 +15,7 @@ using RandomDataStreams
 using Test
 using RNGTest
 
-@isdefined(testu01_available) || include("testu01_support.jl")
+@isdefined(check_battery) || include("testu01_support.jl")
 
 
 # RNGTest hands the callback to C, so it has to be a `Function` whose return
@@ -43,9 +43,6 @@ function interleaved(gen_init, nstreams::Int, per_stream::Int)
     return () -> g()
 end
 
-if !testu01_available()
-    testu01_skip_notice("TestU01 on interleaved streams")
-else
 @testset "TestU01 SmallCrush on interleaved streams" begin
     generators = [
         ("MRG32k3a", MRG32k3aGen),
@@ -60,9 +57,7 @@ else
         @testset "$name" begin
             f = interleaved(gen_init, 64, 1)
             @test Base.return_types(f, ())[1] === Float64   # else the C callback crashes
-            bad = suspect_pvalues(RNGTest.smallcrushJulia(f))
-            @test isempty(bad)
+            check_battery(() -> RNGTest.smallcrushJulia(f), "interleaved / $name")
         end
     end
-end
 end

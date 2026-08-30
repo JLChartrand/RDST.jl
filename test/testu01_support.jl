@@ -3,25 +3,32 @@
 using Test
 
 """
-    testu01_available() -> Bool
+    run_battery(f, what) -> result or nothing
 
-Whether this platform can hand TestU01 a callback.
+Run `f()`, which drives a TestU01 battery, and return `nothing` instead when
+the platform cannot hand TestU01 its callback.
 
-RNGTest drives the C batteries through `@cfunction(\$f, ...)`, which needs an
-executable trampoline for the closure. Apple Silicon forbids writable and
-executable memory, so Julia raises `cfunction: closures are not supported on
-this platform` there and no battery can run, whatever the generator. The probe
-below asks the question directly rather than maintaining a list of platforms.
+RNGTest builds that callback with `@cfunction` over a closure, which needs an
+executable trampoline. Apple Silicon forbids memory that is both writable and
+executable, so Julia raises `cfunction: closures are not supported on this
+platform` and no battery can run there, whatever the generator.
+
+The failure is caught at the point of use rather than predicted by a probe. A
+synthetic probe is not trustworthy here: a closure over a constant is compiled
+to a singleton, needs no trampoline, and succeeds on exactly the platform where
+the real one fails. Only the real call answers the question. Any other error is
+rethrown.
 """
-function testu01_available()
+function run_battery(f, what)
     try
-        f = let x = 1.0
-            () -> x
+        return f()
+    catch err
+        if occursin("closures are not supported", sprint(showerror, err))
+            @info "$what skipped: this platform cannot build a C callback " *
+                  "from a closure, which RNGTest needs to drive TestU01."
+            return nothing
         end
-        @cfunction($f, Float64, ())
-        return true
-    catch
-        return false
+        rethrow()
     end
 end
 
@@ -38,8 +45,17 @@ function suspect_pvalues(result)
     return filter(p -> p < 0.001 || p > 0.999, ps)
 end
 
-"Print the reason once, so a skipped battery is visible in the log."
-function testu01_skip_notice(what)
-    @info "$what skipped: this platform cannot build a C callback from a " *
-          "closure, which RNGTest needs to drive TestU01 (Apple Silicon)."
+"""
+    check_battery(f, what)
+
+Assert that a battery reports no suspect p-value, or record a skipped test when
+the platform cannot run it at all.
+"""
+function check_battery(f, what)
+    res = run_battery(f, what)
+    if res === nothing
+        @test_skip "TestU01 unavailable on this platform"
+    else
+        @test isempty(suspect_pvalues(res))
+    end
 end

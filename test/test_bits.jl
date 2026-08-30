@@ -23,7 +23,7 @@ using Test
 using Random
 using RNGTest
 
-@isdefined(testu01_available) || include("testu01_support.jl")
+@isdefined(check_battery) || include("testu01_support.jl")
 
 
 # RNGTest drives an AbstractRNG through `rand!`, so a stream of constructed
@@ -49,9 +49,6 @@ function halves_of_u64(rng)
     end
 end
 
-if !testu01_available()
-    testu01_skip_notice("TestU01 on the integer paths")
-else
 @testset "TestU01 SmallCrush on the integer paths" begin
     streams = [
         ("MRG32k3a UInt32",        () -> (m = MRG32k3a(); () -> rand(m, UInt32))),
@@ -63,9 +60,8 @@ else
 
     for (name, mk) in streams
         @testset "$name" begin
-            bad = suspect_pvalues(RNGTest.smallcrushJulia(RNGTest.wrap(BitStream(mk()), UInt32)))
-            @test isempty(bad)
+            check_battery(() -> RNGTest.smallcrushJulia(RNGTest.wrap(BitStream(mk()), UInt32)),
+                          "bits / $name")
         end
     end
-end
 end
