@@ -135,6 +135,80 @@ the whole working set in registers inside `next`, eliminating bounds checks and
 heap traffic that a `Vector{UInt64}` representation incurs. Measured
 throughput: ≈ 10⁹ draws/s on a single core.
 
+## PCG
+
+`PCGRNG{V}` runs a linear congruential recurrence on 128 bits,
+`s <- a*s + c (mod 2^128)`, and permutes the state into 64 bits of output. Two
+variants ship: `PCG64` with the XSL-RR permutation, which is what
+`numpy.random.default_rng()` returns, and `PCG64DXSM` with the DXSM
+permutation and the cheap 64-bit multiplier, which NumPy recommends for
+large-scale parallel work. They differ in one more detail that matters for
+bit-exactness: PCG64 steps the state and permutes the result, DXSM permutes the
+state and then steps it. Both are pinned by known-answer vectors taken from
+NumPy.
+
+**Jumps are closed-form.** For an LCG,
+
+```
+s_n = a^n * s_0 + c * (a^n - 1)/(a - 1)   (mod 2^128),
+```
+
+which Brown's (1994) doubling recurrence evaluates in `O(log n)`
+multiplications. `advance_state!` therefore costs the same at any distance, and
+a backward jump of `n` is the forward jump of `2^128 - n`, so it costs the same
+as a forward one. This is the cheapest arbitrary jump in the package: the
+xoshiro families pay `O(deg^2)` GF(2) operations for the same operation, tens
+to hundreds of milliseconds, and MRG32k3a a sequence of matrix products.
+**The jump distances are odd, and that is not cosmetic.** The obvious choice —
+2^64 between substreams, 2^96 between streams, mirroring the xoroshiro128
+layout — is wrong for a linear congruential recurrence. By the
+lifting-the-exponent lemma,
+
+```
+v2(a^n - 1) = v2(a - 1) + v2(a + 1) + v2(n) - 1 = 2 + v2(n)   (n even),
+```
+
+so a jump of `2^m` produces a jump multiplier congruent to `1` modulo
+`2^(m+2)`. With `m = 96`, the states of successive streams agree in their low
+98 bits up to an arithmetic progression. Each stream still passes SmallCrush on
+its own; interleaving 64 of them round-robin fails it outright, with 14 of 15
+p-values at 0. The package's inter-stream battery found this, which is the
+argument for having one.
+
+An odd distance has `v2(n) = 0`, leaving the jump multiplier as far from the
+identity as the multiplier itself. Substreams are therefore `2^64 + 1` apart
+and streams `2^32 * (2^64 + 1) + 1`, which is still 2^32 streams of 2^32
+substreams of 2^64 draws and still non-overlapping — the last substream of a
+stream ends two values below the next stream's start. With those distances the
+interleaved battery passes. Both the parity of the distances and the 2-adic
+distance of the resulting jump multipliers are asserted in the test suite.
+
+**The increment is fixed, and that is deliberate.** PCG has its own notion of a
+stream: every odd increment `c` gives a full-period orbit, and NumPy exposes it
+as part of the state. Those orbits are not known to be independent. Writing
+`t_n = s_n + h` and matching the two recurrences gives
+
+```
+h * (a - 1) = c1 - c2,
+```
+
+which has a solution whenever `4` divides `c1 - c2` — the full-period condition
+forces `a = 1 (mod 4)`, and `v2(a - 1) = 2` for the PCG multipliers. For half
+of all pairs of odd increments, then, the two "independent streams" are the
+same state sequence translated by a constant. Taking `c2 = c1 - (a - 1)` makes
+that constant `1`, and the two output sequences then differ by a mean Hamming
+distance of 2 bits out of 64, against 32 for unrelated sequences, with 94% of
+draws differing in at most 4 bits.
+
+That is an adversarial pair; most pairs of increments are far less structured
+and would show nothing. The objection is not that every pair is bad but that no
+criterion is published for telling the good pairs from the bad ones, which is
+exactly what L'Ecuyer et al. (2021, Sec. 3) argue against — the same objection
+they raise against Squares. So the package fixes the increment to the reference
+value for every PCG stream and derives streams from jumps, whose non-overlap is
+a statement about distances along one orbit. The algebra above is locked in the
+test suite.
+
 ## Counter-based generators
 
 `CBRNG{B,W,N,K}` holds what every counter-based family shares — the counter,
@@ -236,40 +310,44 @@ variation is a few percent, so read differences below that as noise.
 
 | Generator | `Float64` | ns | `UInt64` | ns | `UInt32` | ns |
 |---|---|---|---|---|---|---|
-| `MRG32k3a` | 230 | 4.36 | 46 | 21.73 | 92 | 10.82 |
-| `Xoroshiro128p` | 690 | 1.45 | 917 | 1.09 | 1062 | 0.94 |
-| `Xoroshiro128ss` | 653 | 1.53 | 854 | 1.17 | 827 | 1.21 |
-| `Xoroshiro128pp` | 597 | 1.67 | 817 | 1.22 | 903 | 1.11 |
-| `Xoshiro256p` | 768 | 1.30 | 1139 | 0.88 | 1191 | 0.84 |
-| `Xoshiro256ss` | 697 | 1.43 | 1057 | 0.95 | 910 | 1.10 |
-| `Xoshiro256pp` | 670 | 1.49 | 1006 | 0.99 | 1028 | 0.97 |
-| `Xoshiro512p` | 556 | 1.80 | 778 | 1.29 | 724 | 1.38 |
-| `Xoshiro512ss` | 523 | 1.91 | 742 | 1.35 | 599 | 1.67 |
-| `Xoshiro512pp` | 519 | 1.93 | 707 | 1.41 | 707 | 1.42 |
-| `Philox4x32-10` | 91 | 11.03 | 106 | 9.44 | 272 | 3.68 |
-| `Philox4x64-10` | 208 | 4.81 | 272 | 3.67 | 258 | 3.88 |
-| `Threefry4x32-20` | 82 | 12.18 | 90 | 11.08 | 178 | 5.62 |
-| `Threefry4x64-20` | 145 | 6.90 | 150 | 6.68 | 150 | 6.66 |
+| `MRG32k3a` | 236 | 4.25 | 47 | 21.20 | 95 | 10.55 |
+| `Xoroshiro128p` | 695 | 1.44 | 941 | 1.06 | 1090 | 0.92 |
+| `Xoroshiro128ss` | 655 | 1.53 | 876 | 1.14 | 848 | 1.18 |
+| `Xoroshiro128pp` | 599 | 1.67 | 819 | 1.22 | 927 | 1.08 |
+| `Xoshiro256p` | 788 | 1.27 | 1168 | 0.86 | 1221 | 0.82 |
+| `Xoshiro256ss` | 715 | 1.40 | 1058 | 0.95 | 933 | 1.07 |
+| `Xoshiro256pp` | 670 | 1.49 | 1006 | 0.99 | 1054 | 0.95 |
+| `Xoshiro512p` | 570 | 1.75 | 798 | 1.25 | 742 | 1.35 |
+| `Xoshiro512ss` | 523 | 1.91 | 742 | 1.35 | 614 | 1.63 |
+| `Xoshiro512pp` | 532 | 1.88 | 725 | 1.38 | 709 | 1.41 |
+| `PCG64` | 504 | 1.98 | 599 | 1.67 | 600 | 1.67 |
+| `PCG64DXSM` | 561 | 1.78 | 743 | 1.35 | 743 | 1.35 |
+| `Philox4x32-10` | 93 | 10.76 | 109 | 9.20 | 272 | 3.68 |
+| `Philox4x64-10` | 210 | 4.76 | 273 | 3.66 | 265 | 3.77 |
+| `Threefry4x32-20` | 84 | 11.89 | 92 | 10.89 | 186 | 5.39 |
+| `Threefry4x64-20` | 147 | 6.81 | 153 | 6.52 | 154 | 6.50 |
 
 Array fill with `rand!`, millions of elements per second (nanoseconds per
 element is `1000` over the figure):
 
 | Generator | `Float64` | `UInt64` | `UInt32` |
 |---|---|---|---|
-| `MRG32k3a` | 162 | 47 | 92 |
-| `Xoroshiro128p` | 540 | 578 | 562 |
-| `Xoroshiro128ss` | 516 | 529 | 509 |
-| `Xoroshiro128pp` | 488 | 498 | 499 |
-| `Xoshiro256p` | 488 | 507 | 508 |
-| `Xoshiro256ss` | 483 | 516 | 466 |
-| `Xoshiro256pp` | 459 | 499 | 500 |
-| `Xoshiro512p` | 369 | 387 | 415 |
-| `Xoshiro512ss` | 366 | 385 | 378 |
-| `Xoshiro512pp` | 366 | 382 | 398 |
-| `Philox4x32-10` | 154 | 172 | 340 |
-| `Philox4x64-10` | 351 | 352 | 261 |
-| `Threefry4x32-20` | 98 | 105 | 200 |
-| `Threefry4x64-20` | 207 | 177 | 150 |
+| `MRG32k3a` | 159 | 46 | 92 |
+| `Xoroshiro128p` | 554 | 581 | 576 |
+| `Xoroshiro128ss` | 542 | 543 | 519 |
+| `Xoroshiro128pp` | 499 | 511 | 510 |
+| `Xoshiro256p` | 501 | 519 | 520 |
+| `Xoshiro256ss` | 496 | 519 | 475 |
+| `Xoshiro256pp` | 471 | 505 | 512 |
+| `Xoshiro512p` | 377 | 394 | 426 |
+| `Xoshiro512ss` | 361 | 384 | 389 |
+| `Xoshiro512pp` | 373 | 379 | 408 |
+| `PCG64` | 574 | 622 | 621 |
+| `PCG64DXSM` | 632 | 735 | 735 |
+| `Philox4x32-10` | 157 | 178 | 347 |
+| `Philox4x64-10` | 359 | 339 | 257 |
+| `Threefry4x32-20` | 100 | 106 | 204 |
+| `Threefry4x64-20` | 207 | 177 | 152 |
 
 What the tables say. Within each xoshiro family the ordering is the same and
 the spread is small: `+` is fastest, then `**`, then `++`, within about 15% of
@@ -280,7 +358,16 @@ magnitude below on `Float64`, which is what buying a keyed bijection per block
 costs, and the two 32-bit ciphers are fastest in `UInt32`, where a draw is one
 cipher word rather than two.
 
-The one outlier is `MRG32k3a` in `UInt64`, at 21.7 ns against 4.4 ns for its
+The two PCG variants land between the xoshiro families and MRG32k3a, at
+roughly two thirds of `Xoshiro256p`: a 128-bit multiply per draw is more work
+than a handful of shifts and xors. `PCG64DXSM` is the faster of the two despite
+its extra output multiply, because its "cheap" 64-bit multiplier turns the
+128x128 state multiplication into a 64x128 one. Both are the fastest generators
+in the package under `rand!`, ahead of every xoshiro: the whole state is one
+128-bit word, so the bulk loop touches far less memory per element than a
+four- or eight-word state does.
+
+The one outlier is `MRG32k3a` in `UInt64`, at 21.2 ns against 4.3 ns for its
 `Float64`: a 64-bit word costs four MRG steps, because the modulus is not a
 power of two and the word is assembled from 16-bit chunks. See the section on
 its integer outputs.
@@ -288,7 +375,7 @@ its integer outputs.
 The counter-based generators are the ones that gain from filling an array:
 `rand!` produces whole blocks straight into it, so the counter, the block
 buffer and the index are touched once per block instead of once per draw.
-Philox4x64-10 goes from 208 to 351 million `Float64` per second, a factor of
+Philox4x64-10 goes from 210 to 359 million `Float64` per second, a factor of
 1.7. The recurrence-based generators have no such block to exploit and are
 *slower* in bulk than in the accumulator loop, by the cost of the stores.
 

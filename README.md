@@ -18,12 +18,19 @@ Four generator families are provided:
 |-------------|---------------|------|----------------------|----------------|
 | **MRG32k3a** | `MRG32k3a` | ≈ 2^191 | `Float64` | matrix jumps (L'Ecuyer) |
 | **xoshiro/xoroshiro** | `Xoroshiro128p/ss/pp`, `Xoshiro256p/ss/pp`, `Xoshiro512p/ss/pp` | 2^128 – 2^512 | `UInt64` | Vigna's jump polynomials |
+| **PCG** | `PCG64`, `PCG64DXSM` | 2^128 | `UInt64` | closed-form LCG jumps (O'Neill) |
 | **Philox** | `PhiloxRNG` (4x32-10), `Philox4x64RNG` (4x64-10) | 2^130 | `UInt32` / `UInt64` | distinct keys / counter jumps (Salmon et al.) |
 | **Threefry** | `Threefry4x64RNG` (4x64-20), `Threefry4x32RNG` (4x32-20) | 2^130 | `UInt64` / `UInt32` | distinct keys / counter jumps (Salmon et al.) |
 
 All xoshiro/xoroshiro variants are validated byte-for-byte against the
-original C implementations from [xoshiro.di.unimi.it](http://xoshiro.di.unimi.it).
-See the [documentation](docs/) for a detailed comparison with MRG32k3a.
+original C implementations from [xoshiro.di.unimi.it](http://xoshiro.di.unimi.it),
+Philox and Threefry against the test vectors of Salmon et al. (2011), and both
+PCG variants against NumPy, whose `default_rng()` is PCG64.
+See the [documentation](docs/) for a detailed comparison.
+
+Note that PCG's own increment-based "streams" are deliberately not exposed:
+they are not known to be independent, and streams here come from the
+closed-form LCG jump instead. The [FAQ](docs/src/faq.md) explains why.
 
 ## Features
 

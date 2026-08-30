@@ -491,6 +491,120 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
     end
 
 
+    @testset "PCG reference values" begin
+        # Known-answer vectors produced by NumPy 1.26.4, whose PCG64 is the
+        # default bit generator of `numpy.random.default_rng`. Both the outputs
+        # and the resulting state must agree, which pins the multiplier, the
+        # increment, the output permutation and the order of step and output.
+        S0 = (UInt128(0x0123456789abcdef) << 64) | UInt128(0x0123456789abcdef)
+
+        r = PCG64(S0)
+        @test [rand(r, UInt64) for _ in 1:6] == UInt64[
+            0xa12dea8c95158441, 0x242041db494e6da8, 0x2cb3dccd41360faa,
+            0x4ceae7e3765e3633, 0x65ddd0b932ceeb6b, 0x5bd4867ba1e071d4]
+        @test get_state(r) == (UInt128(0xbfd04c4cd56d6e75) << 64) | UInt128(0x873a61a69650be85)
+
+        d = PCG64DXSM(S0)
+        @test [rand(d, UInt64) for _ in 1:6] == UInt64[
+            0x5a3d0ba6a739bb5e, 0xa2fe1f98fc08aa3a, 0x624216f30d9f745d,
+            0x90f0d7069d4cf377, 0x6a6c25608fb7c01d, 0x64220ea4ada77336]
+        @test get_state(d) == (UInt128(0x4fa4d3f3a35dcfff) << 64) | UInt128(0xf57dd659648a1dd5)
+
+        # the two variants really are different generators
+        @test PCG64(S0) |> x -> rand(x, UInt64) != rand(PCG64DXSM(S0), UInt64)
+    end
+
+
+    @testset "PCG jumps are the closed-form LCG advance" begin
+        # The whole point of putting PCG here: the jump is Brown's formula, so
+        # any distance is O(log n) and must coincide exactly with taking that
+        # many draws. Checked for both variants, since they use different
+        # multipliers.
+        for T in (PCG64, PCG64DXSM)
+            for n in (1, 2, 37, 1021)
+                a = T(12345); b = T(12345)
+                for _ in 1:n
+                    rand(a)
+                end
+                advance_state!(b, 0, n)
+                @test rand(a) == rand(b)
+            end
+
+            # backwards costs the same and lands in the same place
+            a = T(999)
+            x = [rand(a) for _ in 1:50]
+            advance_state!(a, 0, -50)
+            @test [rand(a) for _ in 1:50] == x
+
+            # substreams are 2^64 + 1 apart, streams 2^32*(2^64 + 1) + 1.
+            # The distances are odd on purpose: a power-of-two jump gives a
+            # jump multiplier congruent to 1 modulo a large power of two, and
+            # the resulting streams fail the interleaved battery.
+            a, b = T(7), T(7)
+            next_substream!(a); advance_state!(b, 64, 1)
+            @test rand(a) == rand(b)
+
+            a, b = T(7), T(7)
+            long_jump!(a); advance_state!(b, 96, 2^32 + 1)
+            @test rand(a) == rand(b)
+
+            # what makes those distances safe: v2(a^n - 1) = 2 + v2(n), so an
+            # odd distance keeps the jump multiplier away from the identity
+            mult = T === PCG64 ? RandomDataStreams.PCG_MULT_128 : RandomDataStreams.PCG_MULT_CM
+            for d in (RandomDataStreams._PCG_SHORT_JUMP, RandomDataStreams._PCG_LONG_JUMP)
+                @test isodd(d)
+                jm = powermod(big(mult), big(d), big(2)^128) % UInt128
+                @test trailing_zeros(jm - one(UInt128)) <= 8
+            end
+
+            # boundaries are anchored: how much was consumed does not matter
+            a = T(3); next_substream!(a)
+            u = [rand(a) for _ in 1:4]
+            b = T(3)
+            for _ in 1:37
+                rand(b)
+            end
+            next_substream!(b)
+            @test [rand(b) for _ in 1:4] == u
+        end
+
+        g = PCG64Gen(20260830)
+        s1, s2 = next_stream!(g), next_stream!(g)
+        @test isempty(intersect([rand(s1, UInt64) for _ in 1:5000],
+                                [rand(s2, UInt64) for _ in 1:5000]))
+    end
+
+
+    @testset "PCG increment-based streams are not independent" begin
+        # Why the package fixes the increment instead of exposing it as a
+        # stream parameter, as PCG and NumPy do. Writing t_n = s_n + h and
+        # matching the two recurrences gives h*(a - 1) = c1 - c2, solvable
+        # whenever 4 divides c1 - c2 -- half of all pairs of odd increments.
+        # For those pairs the two "independent streams" are one sequence
+        # translated by a constant, which no output permutation undoes.
+        a  = RandomDataStreams.PCG_MULT_128
+        c1 = RandomDataStreams.PCG_INCREMENT
+
+        @test a % 4 == 1                                  # forced by full period
+        @test (a - one(UInt128)) % 4 == 0                  # so v2(a - 1) >= 2
+        @test (a - one(UInt128)) % 8 != 0                  # and exactly 2
+
+        h  = one(UInt128)
+        c2 = c1 - (a - one(UInt128))                       # makes h = 1 a solution
+        @test isodd(c2)                                    # still a valid increment
+
+        s = (UInt128(0x9e3779b97f4a7c15) << 64) | UInt128(0xf39cc0605cedc835)
+        t = s + h
+        separated = false
+        for _ in 1:1000
+            s = s * a + c1
+            t = t * a + c2
+            t - s == h || (separated = true; break)
+        end
+        @test !separated
+    end
+
+
     @testset "uniform stream interface" begin
         # code written against AbstractStreamableRNG must work for every
         # generator: same navigation, same get_state/set_state! round-trip,
@@ -503,6 +617,8 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
             ("Philox4x64-10", () -> next_stream!(Philox4x64Gen()), UInt64[3, 4]),
             ("Threefry4x64-20", () -> next_stream!(Threefry4x64Gen()), UInt64[3, 4, 5, 6]),
             ("Threefry4x32-20", () -> next_stream!(Threefry4x32Gen()), UInt32[3, 4, 5, 6]),
+            ("PCG64",         () -> next_stream!(PCG64Gen(42)), 98765),
+            ("PCG64DXSM",     () -> next_stream!(PCG64DXSMGen(42)), 98765),
         ]
         for (name, mk, seed) in makers
             @testset "$name" begin

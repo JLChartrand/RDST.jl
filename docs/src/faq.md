@@ -78,6 +78,33 @@ gives an identically zero output — so a new family whose bijection is weak for
 structured keys must override `stream_key` with a schedule that hashes the
 seed. See [Implementation Notes](implementation.md).
 
+## Can I reproduce a NumPy pipeline?
+
+Partly. `PCG64` here produces exactly the same raw 64-bit outputs as
+`numpy.random.default_rng()`'s bit generator for the same 128-bit state, and
+`PCG64DXSM` matches NumPy's `PCG64DXSM`. What does *not* transfer is how NumPy
+gets to that state: `SeedSequence` turns a user seed into the state through its
+own hashing, and that specification is not implemented here. So you can
+reproduce a NumPy stream if you carry the state across, not if you carry only
+the seed.
+
+The distributions differ too. `rand(rng)` and `numpy`'s `random()` consume the
+same bits but not necessarily in the same way, and `randn` uses a different
+algorithm from NumPy's ziggurat. Only the raw generator output is guaranteed
+to agree.
+
+## Why can't I choose PCG's increment to get more streams?
+
+Because it does not give independent streams. Every odd increment gives a
+full-period orbit, but for half of all pairs of odd increments the two orbits
+are the same state sequence shifted by a constant — an adversarial pair can be
+built whose outputs differ by an average of 2 bits out of 64. Most pairs are
+harmless, but no published criterion separates them, so the package fixes the
+increment and derives streams from jumps instead. The algebra is in the
+[Implementation Notes](implementation.md). NumPy takes the same practical
+position: its recommended way to parallelise is `SeedSequence.spawn()`, not the
+increment.
+
 ## Does this package run on the GPU?
 
 No. It assigns and navigates streams on the host. The counter-based bijections

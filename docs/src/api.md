@@ -182,6 +182,27 @@ byte-for-byte against the original C implementations.
 | `set_state!` | yes | yes |
 | `next_stream!` (via Gen) | yes | yes |
 
+## PCG
+
+PCG (O'Neill 2014) runs a 128-bit linear congruential recurrence and permutes
+the state into 64 bits of output. `PCG64` is the default bit generator of
+NumPy, and the outputs here match it exactly for the same state; `PCG64DXSM`
+is the variant NumPy recommends for large-scale parallel work.
+
+Streams come from the closed-form LCG jump, not from PCG's own increment-based
+stream mechanism, which this package deliberately does not expose — see the
+[Implementation Notes](implementation.md) for the reason and the
+[FAQ](faq.md) for what to do instead when reproducing a NumPy pipeline.
+
+```@docs
+PCG64
+PCG64DXSM
+PCG64Gen
+PCG64DXSMGen
+PCGRNG
+PCGGen
+```
+
 ## Counter-based generators
 
 A counter-based RNG produces its output block as a keyed bijection of a

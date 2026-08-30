@@ -58,6 +58,8 @@ const GENERATOR_STREAMS = Pair{String,Any}[
     "Philox4x64-10"   => Philox4x64Gen,
     "Threefry4x32-20" => Threefry4x32Gen,
     "Threefry4x64-20" => Threefry4x64Gen,
+    "PCG64"           => () -> PCG64Gen(seed_words(2)),
+    "PCG64DXSM"       => () -> PCG64DXSMGen(seed_words(2)),
 ]
 
 const GENERATORS = GENERATOR_STREAMS

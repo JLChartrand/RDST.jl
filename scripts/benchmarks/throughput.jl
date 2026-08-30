@@ -105,6 +105,8 @@ function main()
         ("Xoshiro512p",     () -> Xoshiro512p(seed_words(8))),
         ("Xoshiro512ss",    () -> Xoshiro512ss(seed_words(8))),
         ("Xoshiro512pp",    () -> Xoshiro512pp(seed_words(8))),
+        ("PCG64",           () -> PCG64(seed_words(2))),
+        ("PCG64DXSM",       () -> PCG64DXSM(seed_words(2))),
         ("Philox4x32-10",   () -> next_stream!(PhiloxGen())),
         ("Philox4x64-10",   () -> next_stream!(Philox4x64Gen())),
         ("Threefry4x32-20", () -> next_stream!(Threefry4x32Gen())),

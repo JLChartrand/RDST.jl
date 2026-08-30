@@ -64,6 +64,10 @@ rand(::RandomDataStreams.LinRNG, ::UnitRange{Int64})
 rand(::RandomDataStreams.CBRNG)
 rand(::RandomDataStreams.CBRNG, ::Type{Float32})
 rand(::RandomDataStreams.CBRNG, ::Type{Float16})
+rand(::PCGRNG)
+rand(::PCGRNG, ::Type{Float32})
+rand(::PCGRNG, ::Type{Float16})
+rand(::PCGRNG, ::UnitRange{Int64})
 rand(::MRG32k3a, ::RandomDataStreams.Random.SamplerTrivial{RandomDataStreams.Random.CloseOpen12_64})
 short_jump!
 long_jump!

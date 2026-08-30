@@ -24,6 +24,9 @@ include("mrg32k3a/main.jl")
 include("xoshiro/xos256p.jl")
 include("xoshiro/xoshiro256plus_types.jl")
 
+###PCG (O'Neill), the default bit generator of NumPy
+include("pcg/pcg.jl")
+
 ###counter-based generators (Salmon, Moraes, Dror & Shaw)
 include("cbrng/cbrng.jl")
 include("philox/philox.jl")
@@ -40,6 +43,9 @@ export Xoroshiro128p, Xoroshiro128ss, Xoroshiro128pp,
        Xoshiro512pGen, Xoshiro512ssGen, Xoshiro512ppGen
 
 
+
+export PCGRNG, PCGGen
+export PCG64, PCG64DXSM, PCG64Gen, PCG64DXSMGen
 
 export CBRNG, CBGen
 export PhiloxRNG, PhiloxGen

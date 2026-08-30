@@ -26,20 +26,21 @@ alone — see [Streams & Substreams](streams.md).
 
 ## Recurrence-based generators
 
-| Property | MRG32k3a | Xoroshiro128* | Xoshiro256* | Xoshiro512* |
-|---|---|---|---|---|
-| State (bits) | 192 (6 × Int64) | 128 | 256 | 512 |
-| Period | ≈ 2^191 | 2^128 − 1 | 2^256 − 1 | 2^512 − 1 |
-| Native output | `Float64` [0,1), ~32-bit resolution | `UInt64` | `UInt64` | `UInt64` |
-| `Float64` throughput | 230 M/s | ≈ 600–690 M/s | ≈ 670–770 M/s | ≈ 520–560 M/s |
-| Stream mechanism | matrix power A^2^127 on the seed | `long_jump!` polynomial (2^96) | `long_jump!` (2^192) | `long_jump!` (2^384) |
-| Substream mechanism | matrix power A^2^76 | `short_jump!` (2^64) | `short_jump!` (2^128) | `short_jump!` (2^256) |
-| Backward jumps | yes (`advance_state!`) | yes (`advance_state!`, GF(2) polynomials) | yes (`advance_state!`) | yes (`advance_state!`) |
-| Arbitrary-jump cost | O(e) matrix products | O(deg²) GF(2) ops (~10–500 ms) | same | same |
-| Equidistribution | well analysed theory | 1-dim (**/++) / 0-dim (+) | 3-dim (**/++) / 2-dim (+) | 7-dim (**/++) / 6-dim (+) |
-| Parallelism scale advised | large | mild (≈ 2^32 streams) | very large | extreme |
+| Property | MRG32k3a | PCG64 | Xoroshiro128* | Xoshiro256* | Xoshiro512* |
+|---|---|---|---|---|---|
+| State (bits) | 192 (6 × Int64) | 128 | 128 | 256 | 512 |
+| Period | ≈ 2^191 | 2^128 | 2^128 − 1 | 2^256 − 1 | 2^512 − 1 |
+| Native output | `Float64` [0,1), ~32-bit resolution | `UInt64` | `UInt64` | `UInt64` | `UInt64` |
+| `Float64` throughput | 236 M/s | 504 M/s (DXSM 561) | ≈ 600–695 M/s | ≈ 670–790 M/s | ≈ 520–570 M/s |
+| Stream mechanism | matrix power A^2^127 on the seed | closed-form LCG jump (2^32(2^64+1)+1) | `long_jump!` polynomial (2^96) | `long_jump!` (2^192) | `long_jump!` (2^384) |
+| Substream mechanism | matrix power A^2^76 | closed-form (2^64+1) | `short_jump!` (2^64) | `short_jump!` (2^128) | `short_jump!` (2^256) |
+| Backward jumps | yes (`advance_state!`) | yes, same cost as forward | yes (`advance_state!`, GF(2) polynomials) | yes (`advance_state!`) | yes (`advance_state!`) |
+| Arbitrary-jump cost | O(e) matrix products | **O(log n) multiplies** | O(deg²) GF(2) ops (~10–500 ms) | same | same |
+| Equidistribution | well analysed theory | none published | 1-dim (**/++) / 0-dim (+) | 3-dim (**/++) / 2-dim (+) | 7-dim (**/++) / 6-dim (+) |
+| Parallelism scale advised | large | mild (2^32 streams) | mild (≈ 2^32 streams) | very large | extreme |
 
-(`*` means any of the `+`, `**`, `++` scramblers.)
+(`*` means any of the `+`, `**`, `++` scramblers. `PCG64DXSM` has the same
+structure as `PCG64`, with a different output permutation and multiplier.)
 
 ## Counter-based generators
 
@@ -51,8 +52,8 @@ alone — see [Streams & Substreams](streams.md).
 | Substreams per stream | 2^64 | 2^64 | 2^64 | 2^64 |
 | Words per substream | 2^66 × 32 bits | 2^66 × 64 bits | 2^66 × 32 bits | 2^66 × 64 bits |
 | Arithmetic | wide multiply | wide multiply | add–rotate–xor only | add–rotate–xor only |
-| `Float64` throughput | 91 M/s | 208 M/s | 82 M/s | 145 M/s |
-| `Float64` via `rand!` | 154 M/s | 351 M/s | 98 M/s | 207 M/s |
+| `Float64` throughput | 93 M/s | 210 M/s | 84 M/s | 147 M/s |
+| `Float64` via `rand!` | 157 M/s | 359 M/s | 100 M/s | 207 M/s |
 | Jump to any position | O(1) counter arithmetic | O(1) | O(1) | O(1) |
 | Output uniformity | exact (bijection) | exact | exact | exact |
 | BigCrush | passes (Salmon et al. 2011) | passes | passes | passes |
@@ -84,6 +85,27 @@ which state the measurement method and the machine; read them as ratios.
   - `Xoshiro512*`: essentially never needed for period reasons — any period
     ≥ 2^256 is beyond every imaginable need — but handy when you want many
     more independent substreams than 2^128 without changing design.
+
+## When to choose PCG64
+
+- You are **porting or checking a NumPy pipeline**. `PCG64` is what
+  `numpy.random.default_rng()` gives you, and the raw 64-bit outputs here match
+  NumPy's exactly for the same state.
+- You want the **fastest array fill** in the package: with a single 128-bit
+  word of state, `rand!` reaches 632 M `Float64`/s for `PCG64DXSM`, ahead of
+  every xoshiro. On scalar draws it is slower than xoshiro, at around 500 M/s.
+- You need **cheap jumps to arbitrary positions**. The LCG advance is
+  closed-form, so `advance_state!(rng, e, c)` costs `O(log n)` multiplications
+  at any distance, forwards or backwards — against tens to hundreds of
+  milliseconds for the equivalent xoshiro jump.
+- Do **not** choose it for large-scale parallelism: with a 2^128 period it
+  offers 2^32 streams, the same order as `Xoroshiro128*`, and there is no
+  equidistribution theory for it. Note also that the stream distances here are
+  odd rather than powers of two — for an LCG that is a correctness requirement,
+  not a style choice; see the [Implementation Notes](implementation.md). For many streams, use MRG32k3a, a
+  256-bit xoshiro, or a counter-based generator.
+- Note what this package does *not* do: PCG's own increment-based "streams".
+  See the [FAQ](faq.md).
 
 ## When to choose Philox or Threefry
 

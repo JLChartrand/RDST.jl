@@ -7,6 +7,8 @@ streams and substreams:
   simulation literature;
 - the **xoshiro / xoroshiro** families (Blackman & Vigna) — 128, 256 and
   512 bits of state, three scramblers each;
+- **PCG64** and **PCG64DXSM** (O'Neill) — the default bit generator of NumPy,
+  matched bit for bit, with streams from the closed-form LCG jump;
 - the **counter-based** generators **Philox** and **Threefry** (Salmon et al.
   2011) — streams are keys, and any draw can be recomputed from its index.
 

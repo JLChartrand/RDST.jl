@@ -80,3 +80,18 @@ function Random.seed!(rng::CBRNG{B,W,N,K}, seed::Integer) where {B,W,N,K}
 end
 
 Random.seed!(rng::CBRNG, seed::AbstractVector{<:Integer}) = srand!(rng, seed)
+
+"""
+    Random.seed!(rng::PCGRNG, seed::Integer) -> rng
+    Random.seed!(rng::PCGRNG, seed::AbstractVector{<:Integer}) -> rng
+
+Re-seed the generator with all three checkpoints equal. Integer seeds are
+expanded through splitmix64 into the 128-bit state. Every state is a valid LCG
+state, so no seed is rejected.
+"""
+function Random.seed!(rng::PCGRNG, seed::Integer)
+    ws = _splitmix_words(UInt64(seed), 2)
+    return srand!(rng, (UInt128(ws[1]) << 64) | UInt128(ws[2]))
+end
+
+Random.seed!(rng::PCGRNG, seed::AbstractVector{<:Integer}) = srand!(rng, seed)

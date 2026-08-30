@@ -17,6 +17,9 @@
 #   * Xoshiro256+ takes the low 32 bits of an additive scrambler, whose lowest
 #     bits Blackman & Vigna document as linearly weak. SmallCrush does not
 #     resolve that weakness; passing here is not a clearance for those bits.
+#   * PCG takes the low 32 bits of its permuted output. For XSL-RR the rotation
+#     mixes them; DXSM ends in a multiplication, whose low bits depend on fewer
+#     input bits than its high ones, so both are worth their own run.
 
 using RandomDataStreams
 using Test
@@ -56,6 +59,8 @@ end
         ("Philox4x64-10 UInt32",   () -> (r = next_stream!(Philox4x64Gen()); () -> rand(r, UInt32))),
         ("Threefry4x64-20 UInt32", () -> (r = next_stream!(Threefry4x64Gen()); () -> rand(r, UInt32))),
         ("Xoshiro256+ UInt32",     () -> (r = Xoshiro256p(UInt64[1, 2, 3, 4]); () -> rand(r, UInt32))),
+        ("PCG64 UInt32",           () -> (r = PCG64(20260830); () -> rand(r, UInt32))),
+        ("PCG64DXSM UInt32",       () -> (r = PCG64DXSM(20260830); () -> rand(r, UInt32))),
     ]
 
     for (name, mk) in streams
