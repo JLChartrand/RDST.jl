@@ -25,11 +25,14 @@ end
 # those to the same implementation, so that filling an array and drawing in a
 # loop give the same sequence.
 #
-# UInt64 is deliberately left out: it already has a `SamplerType` method below,
-# built from two [1,2) draws, which does *not* agree with the 16-bit assembly
-# above. Reconciling the two changes the output of one spelling or the other,
-# so it is left as it stands.
-for S in (UInt32, UInt128)
+# UInt64 used to have a second, disagreeing implementation here, assembled from
+# the mantissas of two [1,2) draws. That construction assumes 52 random bits
+# per double; MRG32k3a has log2(m1) = 32.0 bits of entropy per step, so the low
+# mantissa bits are a near-deterministic function of the high ones. The result
+# failed SmallCrush on its bit stream with six p-values at 0, and bit 12 came
+# out set in two draws out of three. It is gone; `rand!` and `rand` now share
+# the assembly above, at four MRG steps per UInt64 instead of two.
+for S in (UInt32, UInt64, UInt128)
     @eval @inline rand(rng::MRG32k3a, ::Random.SamplerType{$S})::$S = rand(rng, $S)
 end
 
@@ -56,15 +59,9 @@ derives from this without further plumbing.
 """
 rand(rng::MRG32k3a, ::Random.SamplerTrivial{Random.CloseOpen12_64}) = 1.0 + rand(rng)
 
-# Full-width 64-bit channel assembled from two [1,2) draws (each carries 52
-# random bits); enables BigFloat and anything else requiring a fast 64-bit
-# path. `has_fast_64` only exists in newer Julia versions.
-@static if isdefined(Random, :has_fast_64)
-    Random.has_fast_64(::MRG32k3a) = true
-end
-rand(rng::MRG32k3a, ::Random.SamplerType{UInt64}) =
-    (reinterpret(UInt64, rand(rng, Random.CloseOpen12_64())) << 12) ⊻
-    (reinterpret(UInt64, rand(rng, Random.CloseOpen12_64())) >>> 40)
+# No `has_fast_64`: MRG32k3a has no fast 64-bit channel. Its native step yields
+# just under 32 bits, so a 64-bit word costs four steps. Advertising one only
+# steered Random's machinery towards the defective construction removed above.
 
 # MRG32k3a produces natively Float64
 Random.rng_native_52(::MRG32k3a) = Float64

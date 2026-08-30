@@ -150,11 +150,33 @@ with a schedule that hashes the seed.
 
 ## Integer outputs of MRG32k3a
 
-MRG32k3a natively yields ~31 bits per draw (the difference `p1 − p2`). Wider
-unsigned types are assembled from 16-bit chunks of that value; narrower types
-are truncations. Consequence: these integers are *not* uniform over their full
-width — fine for indexing/shuffling/flags in simulations, not for cryptographic
-use.
+MRG32k3a returns `z = (x1 - x2) mod m1` with `m1 = 2^32 - 209`, prime, scaled to
+`u = z / (m1 + 1)`. Its native output is a uniform integer over a range that is
+**not** a power of two, carrying `log2(m1) = 32.0` bits. This is why the
+reference literature — L'Ecuyer (1999), and the RNGStreams package of L'Ecuyer,
+Simard, Chen & Kelton (2002) whose stream API this package follows — exposes
+only `RandU01()` and `RandInt(i, j) = i + floor((j - i + 1) * RandU01())`, and
+no native-word or raw-bit primitive: no exact uniform word comes out of one
+draw without rejection.
+
+Machine integers are therefore an extension beyond what that literature
+specifies and validates, and they are built here by assembling 16-bit chunks of
+`z`, one MRG step per chunk — four steps for a `UInt64`. Truncating `z` to 16
+bits carries a relative bias of `2^-16`, since `2^16` does not divide `m1`;
+taking the low bits is sound because the modulus is prime, so there is no
+low-bit weakness of the kind a power-of-two LCG has.
+
+The cheaper alternative — assembling a word from the mantissas of two `[1, 2)`
+draws, two steps instead of four — was implemented here and removed. It assumes
+52 random bits per double, and MRG32k3a supplies 32; the low mantissa bits are
+a near-deterministic function of the high ones. The result passed every
+`U(0,1)` battery and failed SmallCrush on its own bit stream with six p-values
+at zero, bit 12 coming out set in two draws out of three. `test/test_bits.jl`
+is the regression net.
+
+Narrower types are truncations of one chunk. None of these integers is exactly
+uniform over its full width — fine for indexing, shuffling and flags in a
+simulation, not for cryptographic use.
 
 ## Testing strategy
 
@@ -186,30 +208,30 @@ Scalar draws, millions per second:
 |---|---|---|---|
 | `MRG32k3a` | 204 | 44 | 88 |
 | `Xoroshiro128p` | 695 | 941 | 1089 |
-| `Xoshiro256p` | 788 | 1167 | 1221 |
+| `Xoshiro256p` | 788 | 1167 | 1306 |
 | `Xoshiro512p` | 570 | 798 | 742 |
-| `Philox4x32-10` | 93 | 109 | 272 |
-| `Philox4x64-10` | 210 | 275 | 265 |
-| `Threefry4x32-20` | 84 | 92 | 183 |
-| `Threefry4x64-20` | 147 | 153 | 154 |
+| `Philox4x32-10` | 93 | 109 | 273 |
+| `Philox4x64-10` | 203 | 262 | 259 |
+| `Threefry4x32-20` | 84 | 92 | 184 |
+| `Threefry4x64-20` | 149 | 152 | 152 |
 
 Array fill with `rand!`, millions of elements per second:
 
 | Generator | `Float64` | `UInt64` | `UInt32` |
 |---|---|---|---|
-| `MRG32k3a` | 154 | 75 | 88 |
-| `Xoroshiro128p` | 554 | 581 | 581 |
-| `Xoshiro256p` | 487 | 519 | 520 |
-| `Xoshiro512p` | 379 | 394 | 426 |
-| `Philox4x32-10` | 157 | 177 | 348 |
-| `Philox4x64-10` | 359 | 360 | 257 |
-| `Threefry4x32-20` | 100 | 106 | 206 |
-| `Threefry4x64-20` | 213 | 181 | 156 |
+| `MRG32k3a` | 155 | 43 | 88 |
+| `Xoroshiro128p` | 545 | 576 | 582 |
+| `Xoshiro256p` | 501 | 520 | 520 |
+| `Xoshiro512p` | 381 | 380 | 427 |
+| `Philox4x32-10` | 157 | 172 | 339 |
+| `Philox4x64-10` | 349 | 352 | 251 |
+| `Threefry4x32-20` | 98 | 103 | 201 |
+| `Threefry4x64-20` | 203 | 175 | 152 |
 
 The counter-based generators are the ones that gain from filling an array:
 `rand!` produces whole blocks straight into it, so the counter, the block
 buffer and the index are touched once per block instead of once per draw.
-Philox4x64-10 goes from 210 to 359 million `Float64` per second, a factor of
+Philox4x64-10 goes from 203 to 349 million `Float64` per second, a factor of
 1.7. The recurrence-based generators have no such block to exploit and are
 *slower* in bulk than in the accumulator loop, by the cost of the stores.
 

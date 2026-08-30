@@ -26,6 +26,23 @@ shows up here and not in a battery run on a single stream.
 The heavier configurations recommended by the paper (up to 1024 streams and up
 to 8 values per stream) are in `scripts/testu01_bigcrush.jl`.
 
+## The integer paths, at the bit level
+
+The Crush batteries examine the 30 most significant bits of the `U(0,1)`
+outputs, so a battery run on the float says nothing about how a generator
+builds a machine integer. Where the integer *is* the native output — Philox
+4x32, Threefry 4x32 — that is the same stream. Where it is a construction, it
+needs testing for itself, and `test/test_bits.jl` runs SmallCrush on the bit
+stream of: `MRG32k3a` in `UInt32` and in `UInt64` (16-bit chunks of a
+non-power-of-two modulus), the 64-bit counter-based families in `UInt32` (the
+low half of a cipher word), and `Xoshiro256+` in `UInt32` (the low bits of an
+additive scrambler).
+
+This battery earns its place: a `UInt64` construction for MRG32k3a that passed
+every `U(0,1)` battery failed here with six p-values at zero. Note also that
+passing does not clear the lowest bits of the `+` scramblers, whose linear
+weakness Blackman & Vigna document and SmallCrush does not resolve.
+
 ## Running BigCrush
 
 The **BigCrush** battery is much more stringent and takes several hours per generator (typically 8 to 12 hours depending on the CPU). Because of this, it is not run during regular CI.

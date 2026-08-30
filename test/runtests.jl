@@ -926,3 +926,5 @@ include("readme.jl")
 include("test_testu01.jl")
 
 include("test_streams_interleaved.jl")
+
+include("test_bits.jl")
