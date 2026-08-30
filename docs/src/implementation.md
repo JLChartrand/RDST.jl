@@ -20,8 +20,9 @@ The recurrence follows Vigna's testless formulation
 carried as positive numbers and subtracted, and a multiple of the modulus is
 added, so the argument of `%` can never be negative and the residual needs no
 correction afterwards; the combination `z = p1 - p2 mod m1` is done with an
-arithmetic shift rather than a comparison. Worth 15% here (204 to 235 million
-`Float64` per second), and the stream is unchanged bit for bit.
+arithmetic shift rather than a comparison. Worth about 15% here — 204 million
+`Float64` per second before, 230 to 235 after depending on the run — and the
+stream is unchanged bit for bit.
 
 It is worth 15% and not the factor of two Vigna reports, because most of what
 he removes by hand LLVM already removes for us: the previous formulation, with
@@ -226,36 +227,65 @@ turns the benchmark into one of memory bandwidth (the same xoshiro reads
 867 M/s with an accumulator and 481 M/s storing into an 8 MB vector); and
 `rand!` measured into a 4096-element vector, small enough to stay in cache.
 
-Scalar draws, millions per second:
+Scalar draws: millions per second, and nanoseconds per draw. Every generator
+the package ships is listed, each scrambler variant separately. Run-to-run
+variation is a few percent, so read differences below that as noise.
+
+| Generator | `Float64` | ns | `UInt64` | ns | `UInt32` | ns |
+|---|---|---|---|---|---|---|
+| `MRG32k3a` | 230 | 4.36 | 46 | 21.73 | 92 | 10.82 |
+| `Xoroshiro128p` | 690 | 1.45 | 917 | 1.09 | 1062 | 0.94 |
+| `Xoroshiro128ss` | 653 | 1.53 | 854 | 1.17 | 827 | 1.21 |
+| `Xoroshiro128pp` | 597 | 1.67 | 817 | 1.22 | 903 | 1.11 |
+| `Xoshiro256p` | 768 | 1.30 | 1139 | 0.88 | 1191 | 0.84 |
+| `Xoshiro256ss` | 697 | 1.43 | 1057 | 0.95 | 910 | 1.10 |
+| `Xoshiro256pp` | 670 | 1.49 | 1006 | 0.99 | 1028 | 0.97 |
+| `Xoshiro512p` | 556 | 1.80 | 778 | 1.29 | 724 | 1.38 |
+| `Xoshiro512ss` | 523 | 1.91 | 742 | 1.35 | 599 | 1.67 |
+| `Xoshiro512pp` | 519 | 1.93 | 707 | 1.41 | 707 | 1.42 |
+| `Philox4x32-10` | 91 | 11.03 | 106 | 9.44 | 272 | 3.68 |
+| `Philox4x64-10` | 208 | 4.81 | 272 | 3.67 | 258 | 3.88 |
+| `Threefry4x32-20` | 82 | 12.18 | 90 | 11.08 | 178 | 5.62 |
+| `Threefry4x64-20` | 145 | 6.90 | 150 | 6.68 | 150 | 6.66 |
+
+Array fill with `rand!`, millions of elements per second (nanoseconds per
+element is `1000` over the figure):
 
 | Generator | `Float64` | `UInt64` | `UInt32` |
 |---|---|---|---|
-| `MRG32k3a` | 235 | 47 | 95 |
-| `Xoroshiro128p` | 695 | 941 | 1089 |
-| `Xoshiro256p` | 788 | 1167 | 1306 |
-| `Xoshiro512p` | 570 | 798 | 742 |
-| `Philox4x32-10` | 93 | 109 | 273 |
-| `Philox4x64-10` | 203 | 262 | 259 |
-| `Threefry4x32-20` | 84 | 92 | 184 |
-| `Threefry4x64-20` | 149 | 152 | 152 |
+| `MRG32k3a` | 162 | 47 | 92 |
+| `Xoroshiro128p` | 540 | 578 | 562 |
+| `Xoroshiro128ss` | 516 | 529 | 509 |
+| `Xoroshiro128pp` | 488 | 498 | 499 |
+| `Xoshiro256p` | 488 | 507 | 508 |
+| `Xoshiro256ss` | 483 | 516 | 466 |
+| `Xoshiro256pp` | 459 | 499 | 500 |
+| `Xoshiro512p` | 369 | 387 | 415 |
+| `Xoshiro512ss` | 366 | 385 | 378 |
+| `Xoshiro512pp` | 366 | 382 | 398 |
+| `Philox4x32-10` | 154 | 172 | 340 |
+| `Philox4x64-10` | 351 | 352 | 261 |
+| `Threefry4x32-20` | 98 | 105 | 200 |
+| `Threefry4x64-20` | 207 | 177 | 150 |
 
-Array fill with `rand!`, millions of elements per second:
+What the tables say. Within each xoshiro family the ordering is the same and
+the spread is small: `+` is fastest, then `**`, then `++`, within about 15% of
+each other — the scrambler is a couple of instructions on top of a shared
+transition. Across families, state size costs: 128 and 256 bits are close,
+512 bits is a third slower. The counter-based generators sit an order of
+magnitude below on `Float64`, which is what buying a keyed bijection per block
+costs, and the two 32-bit ciphers are fastest in `UInt32`, where a draw is one
+cipher word rather than two.
 
-| Generator | `Float64` | `UInt64` | `UInt32` |
-|---|---|---|---|
-| `MRG32k3a` | 166 | 47 | 95 |
-| `Xoroshiro128p` | 545 | 576 | 582 |
-| `Xoshiro256p` | 501 | 520 | 520 |
-| `Xoshiro512p` | 381 | 380 | 427 |
-| `Philox4x32-10` | 157 | 172 | 339 |
-| `Philox4x64-10` | 349 | 352 | 251 |
-| `Threefry4x32-20` | 98 | 103 | 201 |
-| `Threefry4x64-20` | 203 | 175 | 152 |
+The one outlier is `MRG32k3a` in `UInt64`, at 21.7 ns against 4.4 ns for its
+`Float64`: a 64-bit word costs four MRG steps, because the modulus is not a
+power of two and the word is assembled from 16-bit chunks. See the section on
+its integer outputs.
 
 The counter-based generators are the ones that gain from filling an array:
 `rand!` produces whole blocks straight into it, so the counter, the block
 buffer and the index are touched once per block instead of once per draw.
-Philox4x64-10 goes from 203 to 349 million `Float64` per second, a factor of
+Philox4x64-10 goes from 208 to 351 million `Float64` per second, a factor of
 1.7. The recurrence-based generators have no such block to exploit and are
 *slower* in bulk than in the accumulator loop, by the cost of the stores.
 

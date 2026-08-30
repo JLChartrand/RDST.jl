@@ -36,6 +36,11 @@ const RDS = RandomDataStreams
 const N_SCALAR = 100_000        # draws per benchmark sample
 const N_BULK = 4096             # elements per rand! call: 32 KB, cache resident
 
+# Seeds are expanded through splitmix64 from one fixed integer: a low-entropy
+# state such as all-ones takes a while to mix and is a poor starting point for
+# a battery, while a fixed integer keeps the runs reproducible.
+seed_words(n::Int) = RandomDataStreams._splitmix_words(UInt64(12345), n)
+
 @inline _bits(x::Float64) = reinterpret(UInt64, x)
 @inline _bits(x::UInt64) = x
 @inline _bits(x::UInt32) = UInt64(x)
@@ -81,23 +86,31 @@ function main()
 
     generators = [
         ("MRG32k3a",        () -> MRG32k3a()),
-        ("Xoroshiro128p",   () -> Xoroshiro128p(UInt64[1, 2])),
-        ("Xoshiro256p",     () -> Xoshiro256p(UInt64[1, 2, 3, 4])),
-        ("Xoshiro512p",     () -> Xoshiro512p(fill(UInt64(1), 8))),
+        ("Xoroshiro128p",   () -> Xoroshiro128p(seed_words(2))),
+        ("Xoroshiro128ss",  () -> Xoroshiro128ss(seed_words(2))),
+        ("Xoroshiro128pp",  () -> Xoroshiro128pp(seed_words(2))),
+        ("Xoshiro256p",     () -> Xoshiro256p(seed_words(4))),
+        ("Xoshiro256ss",    () -> Xoshiro256ss(seed_words(4))),
+        ("Xoshiro256pp",    () -> Xoshiro256pp(seed_words(4))),
+        ("Xoshiro512p",     () -> Xoshiro512p(seed_words(8))),
+        ("Xoshiro512ss",    () -> Xoshiro512ss(seed_words(8))),
+        ("Xoshiro512pp",    () -> Xoshiro512pp(seed_words(8))),
         ("Philox4x32-10",   () -> next_stream!(PhiloxGen())),
         ("Philox4x64-10",   () -> next_stream!(Philox4x64Gen())),
         ("Threefry4x32-20", () -> next_stream!(Threefry4x32Gen())),
         ("Threefry4x64-20", () -> next_stream!(Threefry4x64Gen())),
     ]
 
-    println("Scalar draws, millions per second:\n")
-    @printf("%-18s %12s %12s %12s\n", "generator", "Float64", "UInt64", "UInt32")
+    println("Scalar draws: millions per second, and nanoseconds per draw\n")
+    @printf("%-18s %9s %6s %9s %6s %9s %6s\n", "generator",
+            "Float64", "ns", "UInt64", "ns", "UInt32", "ns")
     for (name, mk) in generators
         rng = mk()
         f = mdraws(@benchmark(xor_loop_f64($rng, $N_SCALAR)), N_SCALAR)
         u64 = mdraws(@benchmark(xor_loop($rng, UInt64, $N_SCALAR)), N_SCALAR)
         u32 = mdraws(@benchmark(xor_loop($rng, UInt32, $N_SCALAR)), N_SCALAR)
-        @printf("%-18s %12.0f %12.0f %12.0f\n", name, f, u64, u32)
+        @printf("%-18s %9.0f %6.2f %9.0f %6.2f %9.0f %6.2f\n", name,
+                f, 1000 / f, u64, 1000 / u64, u32, 1000 / u32)
     end
 
     println("\nArray fill with rand!, millions of elements per second:\n")
@@ -129,7 +142,7 @@ function main()
     end
 
     println("\nFor reference, the idiom this method deliberately avoids:")
-    let rng = Xoshiro256p(UInt64[1, 2, 3, 4])
+    let rng = Xoshiro256p(seed_words(4))
         b = @benchmark rand($rng)
         @printf("  @benchmark rand(rng) on Xoshiro256p: %.2f ns/draw, i.e. %.0f M/s\n",
                 minimum(b).time, 1000 / minimum(b).time)

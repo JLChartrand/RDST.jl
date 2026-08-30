@@ -36,29 +36,31 @@ using RandomDataStreams, Random, RNGTest, Printf, Dates
 
 # Generators ------------------------------------------------------------------
 
-const GENERATORS = [
-    "MRG32k3a"        => () -> next_stream!(MRG32k3aGen()),
-    "Xoroshiro128p"   => () -> next_stream!(RandomDataStreams.Xoroshiro128pGen(UInt64[1, 2])),
-    "Xoshiro256p"     => () -> next_stream!(Xoshiro256plusGen(UInt64[1, 2, 3, 4])),
-    "Xoshiro256pp"    => () -> next_stream!(RandomDataStreams.Xoshiro256ppGen(UInt64[1, 2, 3, 4])),
-    "Xoshiro512p"     => () -> next_stream!(RandomDataStreams.Xoshiro512pGen(fill(UInt64(1), 8))),
-    "Philox4x32-10"   => () -> next_stream!(PhiloxGen()),
-    "Philox4x64-10"   => () -> next_stream!(Philox4x64Gen()),
-    "Threefry4x32-20" => () -> next_stream!(Threefry4x32Gen()),
-    "Threefry4x64-20" => () -> next_stream!(Threefry4x64Gen()),
-]
+# Seeds are expanded through splitmix64 from one fixed integer: a low-entropy
+# state such as all-ones takes a while to mix and is a poor starting point for
+# a battery, while a fixed integer keeps the runs reproducible.
+seed_words(n::Int) = RandomDataStreams._splitmix_words(UInt64(12345), n)
 
-const GENERATOR_STREAMS = Dict(
+# Every generator the package ships, each with the stream generator that
+# produces it, so that all three suites cover the same set.
+const GENERATOR_STREAMS = Pair{String,Any}[
     "MRG32k3a"        => MRG32k3aGen,
-    "Xoroshiro128p"   => () -> RandomDataStreams.Xoroshiro128pGen(UInt64[1, 2]),
-    "Xoshiro256p"     => () -> Xoshiro256plusGen(UInt64[1, 2, 3, 4]),
-    "Xoshiro256pp"    => () -> RandomDataStreams.Xoshiro256ppGen(UInt64[1, 2, 3, 4]),
-    "Xoshiro512p"     => () -> RandomDataStreams.Xoshiro512pGen(fill(UInt64(1), 8)),
+    "Xoroshiro128p"   => () -> Xoroshiro128pGen(seed_words(2)),
+    "Xoroshiro128ss"  => () -> Xoroshiro128ssGen(seed_words(2)),
+    "Xoroshiro128pp"  => () -> Xoroshiro128ppGen(seed_words(2)),
+    "Xoshiro256p"     => () -> Xoshiro256plusGen(seed_words(4)),
+    "Xoshiro256ss"    => () -> Xoshiro256ssGen(seed_words(4)),
+    "Xoshiro256pp"    => () -> Xoshiro256ppGen(seed_words(4)),
+    "Xoshiro512p"     => () -> Xoshiro512pGen(seed_words(8)),
+    "Xoshiro512ss"    => () -> Xoshiro512ssGen(seed_words(8)),
+    "Xoshiro512pp"    => () -> Xoshiro512ppGen(seed_words(8)),
     "Philox4x32-10"   => PhiloxGen,
     "Philox4x64-10"   => Philox4x64Gen,
     "Threefry4x32-20" => Threefry4x32Gen,
     "Threefry4x64-20" => Threefry4x64Gen,
-)
+]
+
+const GENERATORS = GENERATOR_STREAMS
 
 # Suites ----------------------------------------------------------------------
 #
@@ -103,13 +105,15 @@ _interleaved(streams::Vector, per::Int) =
         () -> g()
     end
 
-make_rng(name::String) = GENERATORS[findfirst(p -> first(p) == name, GENERATORS)].second()
+stream_gen(name::String) =
+    GENERATOR_STREAMS[findfirst(p -> first(p) == name, GENERATOR_STREAMS)].second()
+make_rng(name::String) = next_stream!(stream_gen(name))
 
 function build(suite::String, name::String, opts)
     gen = if suite == "single"
         _single_stream(make_rng(name))
     elseif suite == "interleaved"
-        g = GENERATOR_STREAMS[name]()
+        g = stream_gen(name)
         _interleaved([next_stream!(g) for _ in 1:opts.streams], opts.values)
     elseif suite == "bits"
         _bit_stream(make_rng(name))
