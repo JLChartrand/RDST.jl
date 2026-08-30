@@ -3,6 +3,12 @@ using RandomDataStreams
 using Test
 using RNGTest
 
+@isdefined(testu01_available) || include("testu01_support.jl")
+
+
+if !testu01_available()
+    testu01_skip_notice("TestU01 SmallCrush")
+else
 @testset "TestU01 SmallCrush Validation" begin
     # TestU01 tests take a bit of time, but validate the generator's statistical quality
     
@@ -33,4 +39,5 @@ using RNGTest
             @test result !== nothing
         end
     end
+end
 end

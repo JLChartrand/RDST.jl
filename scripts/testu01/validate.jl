@@ -217,6 +217,22 @@ function plan(opts)
     return [(n, s) for s in suites for n in names]
 end
 
+# RNGTest drives TestU01 through `@cfunction($f, ...)`, which needs an
+# executable trampoline for the closure. Apple Silicon forbids writable and
+# executable memory, so no battery can run there whatever the generator; say so
+# once, clearly, instead of failing inside the first run.
+function testu01_available()
+    try
+        f = let x = 1.0
+            () -> x
+        end
+        @cfunction($f, Float64, ())
+        return true
+    catch
+        return false
+    end
+end
+
 function main(args)
     opts = parse_args(args)
     runs = plan(opts)
@@ -231,6 +247,11 @@ function main(args)
     if opts.list
         println("\n--list given, nothing run.")
         return
+    end
+    if !testu01_available()
+        println("\nThis platform cannot build a C callback from a closure, which")
+        println("RNGTest needs to drive TestU01 (Apple Silicon). Nothing can run here.")
+        exit(1)
     end
 
     mkpath(opts.out)

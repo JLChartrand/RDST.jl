@@ -32,6 +32,20 @@ shows up here and not in a battery run on a single stream.
 The heavier configurations recommended by the paper (up to 1024 streams and up
 to 8 values per stream) are in `scripts/testu01_bigcrush.jl`.
 
+### Platform limitation
+
+The batteries do not run on **Apple Silicon**. RNGTest hands TestU01 its
+callback through `@cfunction($f, ...)`, which needs an executable trampoline
+for the closure, and macOS on aarch64 forbids memory that is both writable and
+executable — Julia raises `cfunction: closures are not supported on this
+platform`. This affects every generator and every battery, and is a property of
+the platform rather than of any package here.
+
+The test suite probes the capability and skips the three batteries with a
+message when it is missing, so the rest of the suite still runs; the on-demand
+harness refuses with the same explanation. Everything else in the suite,
+including the reference vectors, runs everywhere.
+
 ## The integer paths, at the bit level
 
 The Crush batteries examine the 30 most significant bits of the `U(0,1)`

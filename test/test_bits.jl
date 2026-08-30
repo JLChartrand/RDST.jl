@@ -23,21 +23,15 @@ using Test
 using Random
 using RNGTest
 
+@isdefined(testu01_available) || include("testu01_support.jl")
+
+
 # RNGTest drives an AbstractRNG through `rand!`, so a stream of constructed
 # words is exposed as a generator of UInt32.
 mutable struct BitStream{F} <: AbstractRNG
     draw::F                                   # () -> UInt32
 end
 Random.rand(w::BitStream, ::Random.SamplerType{UInt32}) = w.draw()
-
-"p-values outside [0.001, 0.999], the range TestU01 reports as clear failures."
-function suspect_pvalues(result)
-    ps = Float64[]
-    for r in result
-        append!(ps, r isa Number ? [r] : collect(r))
-    end
-    return filter(p -> p < 0.001 || p > 0.999, ps)
-end
 
 "Split each 64-bit draw into its two halves, low first."
 function halves_of_u64(rng)
@@ -55,6 +49,9 @@ function halves_of_u64(rng)
     end
 end
 
+if !testu01_available()
+    testu01_skip_notice("TestU01 on the integer paths")
+else
 @testset "TestU01 SmallCrush on the integer paths" begin
     streams = [
         ("MRG32k3a UInt32",        () -> (m = MRG32k3a(); () -> rand(m, UInt32))),
@@ -70,4 +67,5 @@ end
             @test isempty(bad)
         end
     end
+end
 end

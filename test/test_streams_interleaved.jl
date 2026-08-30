@@ -15,6 +15,9 @@ using RandomDataStreams
 using Test
 using RNGTest
 
+@isdefined(testu01_available) || include("testu01_support.jl")
+
+
 # RNGTest hands the callback to C, so it has to be a `Function` whose return
 # type infers to Float64; a mutable functor behind a closure gives both.
 mutable struct RoundRobin{R}
@@ -40,15 +43,9 @@ function interleaved(gen_init, nstreams::Int, per_stream::Int)
     return () -> g()
 end
 
-"p-values outside [0.001, 0.999], the range TestU01 reports as clear failures."
-function suspect_pvalues(result)
-    ps = Float64[]
-    for r in result
-        append!(ps, r isa Number ? [r] : collect(r))
-    end
-    return filter(p -> p < 0.001 || p > 0.999, ps)
-end
-
+if !testu01_available()
+    testu01_skip_notice("TestU01 on interleaved streams")
+else
 @testset "TestU01 SmallCrush on interleaved streams" begin
     generators = [
         ("MRG32k3a", MRG32k3aGen),
@@ -67,4 +64,5 @@ end
             @test isempty(bad)
         end
     end
+end
 end
