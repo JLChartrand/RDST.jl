@@ -34,13 +34,12 @@
 # and say in the write-up which core type was used. A faster hybrid chip gives
 # *less* trustworthy numbers than a uniform one unless this is done.
 
-using Pkg
-Pkg.activate(@__DIR__)
-haskey(Pkg.project().dependencies, "RandomDataStreams") ||
-    Pkg.develop(path = joinpath(@__DIR__, "..", ".."))
-Pkg.instantiate()
+include(joinpath(@__DIR__, "..", "env.jl"))
+ensure_checkout_env(@__DIR__)
 
 using RandomDataStreams, Random, BenchmarkTools, Printf
+
+assert_checkout(RandomDataStreams, @__DIR__)
 
 include(joinpath(@__DIR__, "..", "provenance.jl"))
 const RDS = RandomDataStreams

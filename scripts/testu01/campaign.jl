@@ -36,6 +36,12 @@
 
 using Printf, Dates
 
+# Resolve the script environment once, here in the driver, before any job runs.
+# The jobs do the same check and find it already done; without this first pass
+# a cold start would have every one of them writing the same Manifest at once.
+include(joinpath(@__DIR__, "..", "env.jl"))
+ensure_checkout_env(@__DIR__)
+
 include(joinpath(@__DIR__, "..", "provenance.jl"))
 const PROV = provenance()
 

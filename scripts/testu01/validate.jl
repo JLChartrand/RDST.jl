@@ -26,13 +26,12 @@
 # appends one line to `summary.tsv`. Read the reports: TestU01 ends with a
 # summary naming every test whose p-value falls outside [1e-3, 1-1e-3].
 
-using Pkg
-Pkg.activate(@__DIR__)
-haskey(Pkg.project().dependencies, "RandomDataStreams") ||
-    Pkg.develop(path = joinpath(@__DIR__, "..", ".."))
-Pkg.instantiate()
+include(joinpath(@__DIR__, "..", "env.jl"))
+ensure_checkout_env(@__DIR__)
 
 using RandomDataStreams, Random, RNGTest, Printf, Dates
+
+assert_checkout(RandomDataStreams, @__DIR__)
 
 include(joinpath(@__DIR__, "..", "provenance.jl"))
 const PROV = provenance()
