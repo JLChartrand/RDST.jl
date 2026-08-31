@@ -195,6 +195,16 @@ random numbers experiment — is in
 ### Philox & Threefry
 - Salmon, J. K., Moraes, M. A., Dror, R. O., & Shaw, D. E. (2011). *Parallel random numbers: as easy as 1, 2, 3*. SC '11: Proceedings of 2011 International Conference for High Performance Computing, Networking, Storage and Analysis.
 
+## Contributing and support
+
+Questions, bug reports and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md)
+says how to report a problem, how to run the batteries and benchmarks, and what
+a change has to satisfy — in particular the stream contract every generator
+obeys and the external reference values a new generator needs. Participation is
+governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+Changes between releases are in [CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
 MIT — see [LICENSE.md](LICENSE.md).
