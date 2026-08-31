@@ -139,6 +139,34 @@ which state the measurement method and the machine; read them as ratios.
 All three share the same transition and therefore the same jump constants:
 streams/substreams behave identically across scramblers of one family.
 
+## Related work in the Julia ecosystem
+
+Most Julia random-number packages live under the
+[JuliaRandom](https://github.com/JuliaRandom) organisation, and they solve a
+different problem from this one. They are collections of *generators*;
+`RandomDataStreams.jl` is a *stream layer* that happens to need generators to
+apply itself to.
+
+| Package | What it provides | Relation to this package |
+|---|---|---|
+| [RandomNumbers.jl](https://github.com/JuliaRandom/RandomNumbers.jl) | PCG, the xorshift family, MT19937 behind `AbstractRNG` | overlapping generators, no stream or substream operations; jump-ahead only for PCG (`advance!`) |
+| [Random123.jl](https://github.com/JuliaRandom/Random123.jl) | Philox, Threefry, ARS, AESNI | overlapping generators; counter positioning via `set_counter!`, no stream model |
+| [StableRNGs.jl](https://github.com/JuliaRandom/StableRNGs.jl) | a Lehmer LCG with output stable across Julia versions | complementary; its "stable streams" mean version stability, not a partition of the period |
+| [RandomExtensions.jl](https://github.com/JuliaRandom/RandomExtensions.jl) | distribution objects and `make` specifications for `rand` | orthogonal: it extends what you draw, not where you draw it from |
+| [VSL.jl](https://github.com/JuliaRandom/VSL.jl) | bindings to Intel MKL's Vector Statistics Library | MKL offers `vslSkipAheadStream` and `vslLeapfrogStream`; the bindings expose `vslNewStream`/`vslNewStreamEx` only |
+| [RNGTest.jl](https://github.com/JuliaRandom/RNGTest.jl) | the TestU01 interface | a dependency of ours — every battery in [Validation](validation.md) runs through it |
+
+The practical consequence: if you need a fast generator, any of these will
+serve. If you need `n` streams that are provably disjoint, each rewindable to
+its own checkpoint, with the same four calls whatever the underlying family,
+that is what this package adds. Should you already depend on one of them, note
+that the generators here are validated against the same original references —
+the Salmon et al. test vectors for Philox and Threefry, the
+`xoshiro.di.unimi.it` C code for the xoshiro families, and NumPy for both PCG
+variants — so from an identical state they produce identical output. Seeding
+conventions differ between packages, however, so matching a run means setting
+the state, not reusing the seed.
+
 ## Practical notes
 
 - Seeding a recurrence-based generator: seed states must not be all-zero. For
