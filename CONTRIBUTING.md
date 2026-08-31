@@ -59,6 +59,17 @@ Crush takes hours per generator and BigCrush the better part of a day, so use
 `campaign.jl` — it runs the matrix as independent processes, records what
 finished in `summary.tsv`, and resumes rather than restarting.
 
+On a machine dedicated to a campaign, `scripts/run-campaign.sh` wraps the whole
+sequence: it benchmarks before the machine gets busy, calibrates one job, sizes
+`--jobs` from the measured peak RSS, and installs a systemd user unit that
+survives a logout and a reboot.
+
+```bash
+./scripts/run-campaign.sh run     --battery=crush   # prepare, then start
+./scripts/run-campaign.sh status  --battery=crush
+./scripts/run-campaign.sh collect --battery=crush   # bundle results for a write-up
+```
+
 ## What a change has to satisfy
 
 **Every generator obeys one contract.** The point of this package is that code
