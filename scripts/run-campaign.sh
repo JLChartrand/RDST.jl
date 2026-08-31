@@ -88,9 +88,20 @@ check_environment() {
         if [ "$ALLOW_DIRTY" -eq 1 ]; then
             info "tree:   DIRTY (results will be marked so; you passed --allow-dirty)"
         else
-            die "the working tree has uncommitted changes, so the commit recorded
-       in every result file would not describe the code that ran. Commit or
-       stash them, or pass --allow-dirty if you know what you are doing."
+            printf '\nerror: the working tree has uncommitted changes, so the commit\n' >&2
+            printf '       recorded in every result file would not describe the code\n' >&2
+            printf '       that ran. What is dirty:\n\n' >&2
+            printf '%s\n' "$dirty" | sed 's/^/         /' >&2
+            printf '\n       ` M` is a tracked file you or a tool modified; `??` is an\n' >&2
+            printf '       untracked file that is not in .gitignore. Running Pkg inside\n' >&2
+            printf '       scripts/*/ or building the docs is the usual cause.\n\n' >&2
+            printf '       Fix it one of these ways:\n' >&2
+            printf '         git diff                       # see what changed\n' >&2
+            printf '         git checkout -- <file>         # discard a tool edit\n' >&2
+            printf '         git stash                      # park real work\n' >&2
+            printf '         %s run --battery=%s --allow-dirty   # exploratory only\n' \
+                   "$0" "$BATTERY" >&2
+            exit 1
         fi
     else
         info "tree:   clean"
