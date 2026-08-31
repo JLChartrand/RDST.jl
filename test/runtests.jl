@@ -1235,6 +1235,8 @@ end
 
 include("readme.jl")
 
+include("test_threads.jl")
+
 include("test_testu01.jl")
 
 include("test_streams_interleaved.jl")

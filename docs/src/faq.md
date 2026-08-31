@@ -48,9 +48,15 @@ state itself rather than hashed. See
 
 ## How do I run truly parallel simulations?
 
-Never share one generator object across tasks/workers. Give each worker its
-own stream *starting seed* (see [Streams & Substreams](streams.md)); streams
-produced by successive `next_stream!` calls are guaranteed non-overlapping.
+Take the streams first, then parallelise over them:
+`rngs = next_stream!(gen, nthreads())`. Streams share no state, so one per
+thread needs no synchronisation.
+
+Never call `next_stream!` on a shared generator object from inside a parallel
+loop. The generator rewrites the seed of the next stream on every call, so
+concurrent calls hand out overlapping streams and nothing reports it. For
+separate processes the seeds have to travel instead; both patterns are in
+[Streams & Substreams](streams.md).
 
 ## Which generator should I pick?
 

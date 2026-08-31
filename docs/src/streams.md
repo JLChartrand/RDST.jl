@@ -129,30 +129,75 @@ Each call to `next_stream!` advances the generator's internal seed by a huge
 leap (2^127 values for MRG32k3a, a full `long_jump!` for Xoshiro256+), which is
 what guarantees non-overlap.
 
+## Threads
+
+Streams share no state, so one stream per thread needs no synchronisation.
+Take the streams first, then parallelise over them:
+
 ```julia
-# Multithreaded simulation: one stream per thread.
-# IMPORTANT: the generator object itself is not thread-safe — never share it;
-# ship each worker its own stream *starting seed* instead.
 using RandomDataStreams, Base.Threads
 
-gen = MRG32k3aGen()
-starts = Vector{Vector{Int}}(undef, nthreads())
-for t in 1:nthreads()
-    starts[t] = copy(get_state(gen))   # seed of stream t
-    next_stream!(gen)                  # advance to the following stream
-end
+gen  = MRG32k3aGen()                    # any generator object
+rngs = next_stream!(gen, nthreads())    # n streams, taken serially
 
 results = Vector{Float64}(undef, nthreads())
 @threads for t in 1:nthreads()
-    s = starts[t]
-    rng = MRG32k3a(s, s, s)            # rebuild stream t on this thread
+    rng = rngs[t]                       # this thread owns this stream
     results[t] = sum(rand(rng) for _ in 1:10^5)
 end
 ```
 
-The same pattern works with Distributed: compute the list of starting seeds on
-the master process and send one entry per worker (`@spawnat` / `remotecall`),
-then rebuild the generator locally with the triple constructor.
+The results are those of the same streams drawn one after another, which the
+test suite checks for every family.
+
+!!! warning "Do not call `next_stream!` inside the parallel loop"
+
+    A generator object holds the seed of the next stream and rewrites it on
+    every call. Concurrent calls read the same seed, so the streams handed out
+    overlap — and nothing reports it. In a measurement here, 64 threads calling
+    `next_stream!` on one shared generator received between 57 and 63 distinct
+    streams instead of 64, on three consecutive runs. The failure is silent and
+    destroys precisely the guarantee this package exists to provide.
+
+    `next_stream!(gen, n)` exists so that the correct pattern is also the
+    shorter one.
+
+## Distributed
+
+Separate processes cannot share stream objects, so the seeds travel instead.
+Take them from the generator before each `next_stream!`, and rebuild the stream
+on the worker with `srand!`:
+
+```julia
+using Distributed
+@everywhere using RandomDataStreams
+
+gen   = MRG32k3aGen()
+seeds = Vector{Any}(undef, nworkers())
+for i in 1:nworkers()
+    seeds[i] = get_state(gen)     # seed of the stream about to be produced
+    next_stream!(gen)             # advance past it
+end
+
+@sync for (i, w) in enumerate(workers())
+    seed = seeds[i]
+    @spawnat w begin
+        rng = MRG32k3a(1)         # any valid seed; replaced on the next line
+        srand!(rng, seed)         # this worker's stream, from its beginning
+        # ... draw from rng ...
+    end
+end
+```
+
+Use `srand!` here, not `set_state!`. They are not interchangeable: `set_state!`
+moves the current position only, leaving the stream and substream boundaries
+where the constructor put them, so a later `reset_stream!` on the worker would
+rewind to the wrong place. `srand!` sets all three checkpoints, which is what
+makes the worker's stream a stream rather than a position in someone else's.
+
+Both are portable across families, as is `get_state` on a generator object; the
+representation that travels is opaque, so hand it back unchanged rather than
+interpreting it.
 
 ## Navigating substreams
 

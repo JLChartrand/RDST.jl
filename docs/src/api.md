@@ -56,6 +56,7 @@ only ever hand it back to `set_state!`.
 | Call | Meaning |
 |---|---|
 | `next_stream!(gen) -> rng` | the next non-overlapping stream |
+| `next_stream!(gen, n) -> Vector` | the next `n` of them; the thread-safe way to obtain streams for parallel work |
 | `srand!(gen, seed) -> gen` | reset the seed the next `next_stream!` will use |
 | `get_state(gen)` / `set_state!(gen, s) -> gen` | save and restore that seed |
 | `show(io, gen)` | display it |
