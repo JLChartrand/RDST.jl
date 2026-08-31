@@ -104,14 +104,35 @@ when each replication itself contains several scenarios.
 
 ## The two object families
 
-1. **Stream generators** (`<: AbstractRNGStream`) hold the seed of the
-   *next* stream to be produced:
-   - `MRG32k3aGen`
-   - `Xoshiro256plusGen`
-2. **RNGs** (`<: AbstractStreamableRNG`) actually produce numbers and can move
-   along streams/substreams:
-   - `MRG32k3a`
-   - `Xoshiro256p`
+Every generator in the package comes as a pair, and the distinction is the one
+the whole interface rests on.
+
+1. **Generator objects** (`<: AbstractRNGStream`) are factories. They hold the
+   seed of the *next* stream and hand out streams with `next_stream!`. They
+   produce no random numbers themselves.
+2. **Streams** (`<: AbstractStreamableRNG`) produce the numbers, and move along
+   the stream and substream hierarchy. They are `AbstractRNG`s, so they work
+   anywhere Julia's own generators do.
+
+| Family | Generator object | Stream |
+|---|---|---|
+| MRG32k3a | `MRG32k3aGen` | `MRG32k3a` |
+| xoroshiro128 | `Xoroshiro128pGen`, `Xoroshiro128ssGen`, `Xoroshiro128ppGen` | `Xoroshiro128p`, `Xoroshiro128ss`, `Xoroshiro128pp` |
+| xoshiro256 | `Xoshiro256pGen`, `Xoshiro256ssGen`, `Xoshiro256ppGen` | `Xoshiro256p`, `Xoshiro256ss`, `Xoshiro256pp` |
+| xoshiro512 | `Xoshiro512pGen`, `Xoshiro512ssGen`, `Xoshiro512ppGen` | `Xoshiro512p`, `Xoshiro512ss`, `Xoshiro512pp` |
+| PCG | `PCG64Gen`, `PCG64DXSMGen` | `PCG64`, `PCG64DXSM` |
+| Philox | `PhiloxGen` (4x32-10), `Philox4x64Gen` | `PhiloxRNG`, `Philox4x64RNG` |
+| Threefry | `Threefry4x32Gen`, `Threefry4x64Gen` | `Threefry4x32RNG`, `Threefry4x64RNG` |
+
+`Xoshiro256plusGen` is an alias of `Xoshiro256pGen`, kept from earlier
+versions.
+
+The interface is the same across the table: whatever the family, a generator
+object answers to `next_stream!`, `srand!`, `get_state` and `set_state!`, and a
+stream answers to `next_substream!`, `reset_substream!`, `reset_stream!`,
+`advance_state!`, `get_state`, `set_state!` and `srand!`. Code written against
+the two abstract types never names a family — see the
+[API reference](api.md).
 
 ## Producing independent streams
 
