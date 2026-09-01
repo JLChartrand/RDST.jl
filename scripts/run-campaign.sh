@@ -262,6 +262,27 @@ physical_cores() {
     getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1
 }
 
+# GNU time, wherever it happens to live. Only one line of its -v output is
+# wanted -- the peak RSS that sizes --jobs -- and only GNU prints it: BSD time,
+# which is what /usr/bin/time is on macOS, spells that -l, and the shell's own
+# `time` is a keyword that measures no memory at all. So candidates are probed
+# rather than trusted by name, and a copy someone installed without root counts
+# for as much as the system one. Prints the path, or fails if there is none.
+gnu_time() {
+    local c
+    for c in /usr/bin/time "$HOME/.local/bin/time" \
+             "$(command -v gtime 2>/dev/null || true)" \
+             "$(command -v time 2>/dev/null || true)"; do
+        case "$c" in /*) ;; *) continue ;; esac   # empty, or the shell keyword
+        [ -x "$c" ] || continue
+        if "$c" -v true 2>&1 | grep -q 'Maximum resident set size'; then
+            echo "$c"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Sets JOBS, unless the caller already did.
 calibrate() {
     say "Calibrating: one job of $BATTERY, measured"
@@ -271,12 +292,22 @@ calibrate() {
     cores=$(physical_cores)
     mem_kb=$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
 
-    if command -v /usr/bin/time >/dev/null; then
-        /usr/bin/time -v julia "$SCRIPT_DIR/testu01/campaign.jl" \
+    local timer=""
+    timer=$(gnu_time) || true
+
+    if [ -n "$timer" ]; then
+        [ "$timer" = /usr/bin/time ] || info "GNU time: $timer"
+        "$timer" -v julia "$SCRIPT_DIR/testu01/campaign.jl" \
             --battery="$BATTERY" --out="$OUT" --calibrate 2>&1 | tee "$log"
         peak_kb=$(awk '/Maximum resident set size/ {print $NF}' "$log" | tail -1)
     else
-        info "GNU time not found: running without a memory measurement."
+        info "GNU time not found, so the peak RSS cannot be measured and --jobs"
+        info "falls back to cores/4 -- on a large machine, a quarter of the"
+        info "campaign it could be running. Either pass --jobs=N yourself, or"
+        info "build GNU time into your home directory (no root needed):"
+        info "  curl -LO https://ftp.gnu.org/gnu/time/time-1.9.tar.gz"
+        info "  tar xzf time-1.9.tar.gz && cd time-1.9"
+        info "  ./configure --prefix=\$HOME/.local && make && make install"
         julia "$SCRIPT_DIR/testu01/campaign.jl" \
             --battery="$BATTERY" --out="$OUT" --calibrate 2>&1 | tee "$log"
         peak_kb=""
