@@ -3,19 +3,39 @@
 ## Why is an all-zero state forbidden?
 
 For the xoshiro/xoroshiro families the all-zero state maps to itself: the
-generator would output only zeros forever. MRG32k3a's two components have the
-same degeneracy (an all-zero component stays zero). Constructors, `srand!`,
-`set_state!` and `Random.seed!` all reject such a seed with an
-`ArgumentError`, and `checkseed` is the predicate they use, so you can test a
-seed yourself before handing it over. An integer seed never produces one.
+generator would output only zeros forever. The two components of MRG32k3a and
+MRG63k3a have the same degeneracy (an all-zero component stays zero).
+Constructors, `srand!`, `set_state!` and `Random.seed!` all reject such a seed
+with an `ArgumentError`, and `checkseed` (`checkseed63` for MRG63k3a) is the
+predicate they use, so you can test a seed yourself before handing it over. An integer seed never produces one.
 PCG and the counter-based generators have no invalid seed at all.
 
-## Are MRG32k3a integer outputs uniform over their full width?
+## Are MRG integer outputs uniform over their full width?
 
-No. MRG32k3a natively produces ~31 bits per draw (`p1 - p2`); wider integers
-are assembled from 16-bit chunks of that value. They are fine for indices,
-shuffling, flags and acceptance tests in simulations — not uniform over
-2^64/2^128. Use a xoshiro variant when you need full-width raw words.
+No, for neither member of the family, though the two are not equally far from
+it. MRG32k3a natively produces ~32 bits per draw (`z = p1 - p2` in `[1, m1]`,
+`m1 = 2^32 - 209`), and wider integers are assembled from 16-bit chunks of that
+value, whose departure from uniformity is of order `2^-16` per chunk. MRG63k3a
+produces just under 63 bits (`m1 = 2^63 - 6645`) and assembles 32-bit chunks,
+at `2^-31` per chunk — the same construction, two orders of magnitude closer to
+uniform, and half as many steps per word.
+
+Both are fine for indices, shuffling, flags and acceptance tests in
+simulations, and neither is exactly uniform over 2^64/2^128. Use a xoshiro
+variant, PCG or a counter-based generator when you need full-width raw words.
+
+## MRG32k3a or MRG63k3a?
+
+Same author, same construction, same stream semantics; the difference is the
+word size the arithmetic is built for. Take **MRG32k3a** when you need the
+published, widely implemented parameter set — matching SSJ, RngStreams or
+another simulation package draw for draw — or when your run consumes floats
+almost exclusively. Take **MRG63k3a** when the draws are integers (its `UInt64`
+costs two steps against four, and is far closer to uniform), or when you want
+the longer period (`2^377` against `2^191`) and the wider stream spacing that
+comes with it. Note that the stream and substream distances of MRG63k3a are
+this package's own choice, since L'Ecuyer published jump matrices for MRG32k3a
+only.
 
 ## Why doesn't `sample(v, k)` work with RandomDataStreams generators?
 
@@ -61,7 +81,8 @@ separate processes the seeds have to travel instead; both patterns are in
 ## Which generator should I pick?
 
 See [Generator Comparison](comparison.md). Short answer: `Xoshiro256pp` for
-general use, `MRG32k3a` for L'Ecuyer-compatible stream semantics,
+general use, `MRG32k3a` for L'Ecuyer-compatible stream semantics
+(`MRG63k3a` for the same model with 64-bit arithmetic and a longer period),
 `Philox4x64RNG` when a draw must be addressable by index rather than reached
 by replaying a state.
 

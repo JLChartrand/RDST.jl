@@ -22,7 +22,7 @@ Requirements: Julia ≥ 1.6. The only dependency is the standard library `Random
 
 ## Choosing a generator
 
-RandomDataStreams.jl implements the full xoshiro/xoroshiro family of Blackman & Vigna, L'Ecuyer's MRG32k3a, O'Neill's PCG (the default bit generator of NumPy), and the Philox and Threefry CBRNGs. All variants of a xoshiro family share the same linear
+RandomDataStreams.jl implements the full xoshiro/xoroshiro family of Blackman & Vigna, L'Ecuyer's MRG32k3a and MRG63k3a, O'Neill's PCG (the default bit generator of NumPy), and the Philox and Threefry CBRNGs. All variants of a xoshiro family share the same linear
 transition and jump constants; only the output scrambler differs.
 
 | Type | Family | State | Period | Scrambler |
@@ -40,7 +40,8 @@ transition and jump constants; only the output scrambler differs.
 | `Xoshiro512p` | xoshiro512 | 512 bits | 2^512 − 1 | `s0 + s2` |
 | `Xoshiro512ss` | xoshiro512 | 512 bits | 2^512 − 1 | high bits, `**` |
 | `Xoshiro512pp` | xoshiro512 | 512 bits | 2^512 − 1 | high bits, `++` |
-| `MRG32k3a` | combined MRG (L'Ecuyer) | 192 bits | ≈ 2^191 | native `Float64` |
+| `MRG32k3a` | combined MRG (L'Ecuyer) | 192 bits | ≈ 2^191 | native `Float64`, 32-bit step |
+| `MRG63k3a` | combined MRG (L'Ecuyer) | 384 bits | ≈ 2^377 | native `Float64`, 63-bit step |
 | `PCG64` | PCG (O'Neill) | 128 bits | 2^128 | XSL-RR permutation |
 | `PCG64DXSM` | PCG (O'Neill) | 128 bits | 2^128 | DXSM permutation |
 
@@ -96,8 +97,8 @@ rand(x)               # Float64 in [0, 1)
 - `Bool`
 - Ranges: `rand(rng, 1:10)` works through the standard `Random` machinery
 
-Note: integer outputs of MRG32k3a are built from its native ~31-bit resolution;
-they are not uniform over their full width. Use them for indices, choices and
+Note: integer outputs of MRG32k3a are built from its native ~32-bit resolution,
+and MRG63k3a's from its ~63-bit one; they are not uniform over their full width. Use them for indices, choices and
 flags rather than cryptography.
 
 ### Xoshiro256p
@@ -115,8 +116,8 @@ rng = MRG32k3a([42, 1, 2, 3, 4, 5])
 x    = Xoshiro256p(UInt64[0xdead, 0xbeef, 0xcafe, 0xbabe])
 ```
 
-Seeds are validated by `checkseed`: a valid MRG32k3a seed has 6 non-negative
-values; the first three must be < m1 and not all zero, the last three < m2 and
+Seeds are validated by `checkseed`, or `checkseed63` for MRG63k3a: a valid seed
+of either has 6 non-negative values; the first three must be < m1 and not all zero, the last three < m2 and
 not all zero.
 
 The standard Julia interface also works with every generator:

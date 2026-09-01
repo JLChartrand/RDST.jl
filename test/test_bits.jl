@@ -8,11 +8,12 @@
 # For the others the integer is a construction, and a construction has to be
 # tested for itself:
 #
-#   * MRG32k3a assembles 16-bit chunks of z = (x1 - x2) mod m1, whose modulus
-#     is not a power of two. Its UInt64 previously had a second implementation,
-#     built from the mantissas of two [1,2) draws, which failed here with six
-#     p-values at 0 -- bit 12 came out set in two draws out of three -- while
-#     passing every U(0,1) battery. This file is the regression net for that.
+#   * MRG32k3a assembles 16-bit chunks, and MRG63k3a 32-bit chunks, of
+#     z = (x1 - x2) mod m1, whose modulus is not a power of two. MRG32k3a's
+#     UInt64 previously had a second implementation, built from the mantissas
+#     of two [1,2) draws, which failed here with six p-values at 0 -- bit 12
+#     came out set in two draws out of three -- while passing every U(0,1)
+#     battery. This file is the regression net for that.
 #   * The 64-bit counter-based families take the low half of a cipher word.
 #   * Xoshiro256+ takes the low 32 bits of an additive scrambler, whose lowest
 #     bits Blackman & Vigna document as linearly weak. SmallCrush does not
@@ -56,6 +57,8 @@ end
     streams = [
         ("MRG32k3a UInt32",        () -> (m = MRG32k3a(); () -> rand(m, UInt32))),
         ("MRG32k3a UInt64",        () -> halves_of_u64(MRG32k3a())),
+        ("MRG63k3a UInt32",        () -> (m = MRG63k3a(); () -> rand(m, UInt32))),
+        ("MRG63k3a UInt64",        () -> halves_of_u64(MRG63k3a())),
         ("Philox4x64-10 UInt32",   () -> (r = next_stream!(Philox4x64Gen()); () -> rand(r, UInt32))),
         ("Threefry4x64-20 UInt32", () -> (r = next_stream!(Threefry4x64Gen()); () -> rand(r, UInt32))),
         ("Xoshiro256+ UInt32",     () -> (r = Xoshiro256p(UInt64[1, 2, 3, 4]); () -> rand(r, UInt32))),

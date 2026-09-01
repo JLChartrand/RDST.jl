@@ -5,12 +5,12 @@ All names below are exported by the `RandomDataStreams` module unless marked *(i
 ## Types
 
 **`AbstractRNGStream`** — supertype of stream *generators*: objects that mint
-new independent streams. `MRG32k3aGen`, the nine `Xoshiro*Gen`/`Xoroshiro*Gen`,
+new independent streams. `MRG32k3aGen`, `MRG63k3aGen`, the nine `Xoshiro*Gen`/`Xoroshiro*Gen`,
 `PCG64Gen`, `PCG64DXSMGen`, `PhiloxGen`, `Philox4x64Gen`, `Threefry4x32Gen`,
 `Threefry4x64Gen`.
 
 **`AbstractStreamableRNG <: Random.AbstractRNG`** — supertype of usable RNGs
-that navigate streams and substreams. `MRG32k3a`, the nine xoshiro/xoroshiro
+that navigate streams and substreams. `MRG32k3a`, `MRG63k3a`, the nine xoshiro/xoroshiro
 variants, `PCG64`, `PCG64DXSM`, `PhiloxRNG`, `Philox4x64RNG`,
 `Threefry4x32RNG`, `Threefry4x64RNG`.
 
@@ -19,7 +19,7 @@ variants, `PCG64`, `PCG64DXSM`, `PhiloxRNG`, `Philox4x64RNG`,
 ## The common interface
 
 Everything in this section works on **every** generator the package ships, with
-the same meaning. It is asserted for all sixteen in the test suite, so code
+the same meaning. It is asserted for all seventeen in the test suite, so code
 written against `AbstractStreamableRNG` never has to name a family. The
 per-family sections below add only what is specific.
 
@@ -67,7 +67,7 @@ only ever hand it back to `set_state!`.
 |---|---|---|
 | `short_jump!(rng)` | xoshiro/xoroshiro, PCG | the family's spelling of a jump by exactly the substream distance; use `next_substream!` in portable code |
 | `long_jump!(rng)` | xoshiro/xoroshiro, PCG | jumps by the stream distance in place. Meaningless for a counter-based generator, where changing stream means changing *key*, which belongs to the generator object |
-| `checkseed` | MRG32k3a, xoshiro/xoroshiro | those two families have invalid seeds — MRG32k3a's two moduli with no all-zero component, and the xoshiro all-zero state, which is a fixed point. PCG and the counter-based families accept every value |
+| `checkseed`, `checkseed63` | MRG32k3a and MRG63k3a, xoshiro/xoroshiro | those two families have invalid seeds — the MRG moduli with no all-zero component, and the xoshiro all-zero state, which is a fixed point. PCG and the counter-based families accept every value |
 | `stream_key` | counter-based | the key schedule hook; there is nothing to schedule in a recurrence-based generator |
 | `next(rng)` *(internal)* | all | raw word output, before any conversion |
 
@@ -132,6 +132,75 @@ Independent deep copy of the generator (all three state vectors).
 | `next_stream!(gen) -> MRG32k3a` | return a new stream; internal seed leaps 2^127 values ahead |
 | `srand!(gen, seed) -> gen` | reset the stored seed |
 | `get_state(gen) -> Vector{Int}` / `set_state!(gen, s)` | save and restore it |
+
+---
+
+## MRG63k3a
+
+The same combined MRG in 64-bit arithmetic: L'Ecuyer (1999), Table II, fourth
+entry. Two moduli just under `2^63` (`m1 = 2^63 - 6645`, `m2 = 2^63 - 21129`),
+period ≈ `2^377`, and just under 63 random bits per step against 32 for
+MRG32k3a. Everything below mirrors the MRG32k3a section; only the numbers
+differ.
+
+### Constructors
+
+| Signature | Description |
+|---|---|
+| `MRG63k3a()` | default seed `[12345, 12345, 12345, 12345, 12345, 12345]` |
+| `MRG63k3a(seed::Integer)` | integer seed, folded into the valid seed space |
+| `MRG63k3a(x::Vector{Int})` | seed all three states (`Cg = Bg = Ig = x`) |
+| `MRG63k3a(x, y, z::Vector{Int})` | explicit current/substream/stream starts |
+
+Seeds are validated with `checkseed63`; invalid seeds throw an `AssertionError`.
+
+### Functions
+
+**`rand(rng::MRG63k3a) -> Float64`**
+Uniform in (0, 1), from an integer with ~63 bits of resolution, of which a
+`Float64` keeps 53. This is the native output, and it reproduces L'Ecuyer's C
+implementation value for value.
+
+**`rand(rng::MRG63k3a, T)`**
+Supported `T`: as for MRG32k3a. Words are assembled from 32-bit chunks, so a
+`UInt64` costs two steps (four for MRG32k3a) and a `UInt32` one.
+
+**`next_substream!(rng) -> rng`**
+Advance `Bg` by `2^150` steps and set `Cg = Bg`.
+
+**`reset_stream!`**, **`reset_substream!`**, **`advance_state!`**,
+**`get_state`**, **`set_state!`**, **`srand!`**, **`copy`**
+Exactly as for MRG32k3a, with one internal difference that does not show:
+MRG63k3a keeps its state one step ahead of the position (Vigna's third
+optimization, worth 7% here), so `get_state` returns the seed representation by
+stepping the stored vector back, and the constructors, `set_state!` and
+`Random.seed!` step a seed forward. Reading `rng.Cg` directly is therefore not
+the same thing as `get_state(rng)` for this generator. See the
+[Implementation Notes](implementation.md).
+
+**`checkseed63(x) -> Bool`**
+`true` iff `x` has length 6, all entries ≥ 0, entries 1–3 are < m1 and not all
+zero, entries 4–6 are < m2 and not all zero.
+
+**`DEFAULT_SEED63`**
+The constant seed vector used by `MRG63k3a()` and `MRG63k3aGen()`.
+
+### Stream generation
+
+| Signature | Description |
+|---|---|
+| `MRG63k3aGen()`, `MRG63k3aGen(12345)`, `MRG63k3aGen(v)` | create a stream generator |
+| `next_stream!(gen) -> MRG63k3a` | return a new stream; internal seed leaps 2^250 values ahead |
+| `srand!(gen, seed) -> gen` | reset the stored seed |
+| `get_state(gen) -> Vector{Int}` / `set_state!(gen, s)` | save and restore it |
+
+The jumps are unaffected by that shift: the jump matrices commute with the
+one-step matrix, so a jumped shifted state is the shifted jumped state.
+
+The stream and substream distances are not L'Ecuyer's: he published jump
+matrices for MRG32k3a only. `2^250` and `2^150` are this package's choice,
+scaled from his `2^127` and `2^76` by the ratio of the two periods, and the
+matrices are computed at precompilation rather than tabulated.
 
 ---
 
@@ -234,18 +303,18 @@ byte-for-byte against the original C implementations.
 ## Where the families actually differ
 
 Every call in [The common interface](#The-common-interface) is available on all
-sixteen generators, so there is no availability matrix to consult. What differs
+seventeen generators, so there is no availability matrix to consult. What differs
 is cost and representation:
 
-| | MRG32k3a | xoshiro / xoroshiro | PCG64, PCG64DXSM | Philox, Threefry |
-|---|---|---|---|---|
-| Native output | `Float64`, ~32-bit resolution | `UInt64` | `UInt64` | a block of four words |
-| `get_state` returns | `Vector{Int}` (6) | `Vector{UInt64}` (`N`) | `UInt128` | `(ctr, key, buffer, idx)` |
-| Cost of `advance_state!` | O(e) matrix products | O((64N)²) GF(2) ops, ~10–500 ms | O(log n) multiplies | O(1), a counter addition |
-| `short_jump!`, `long_jump!` | — | yes | yes | — |
-| Rejected seeds | `checkseed`: two moduli, no all-zero component | `checkseed`: the all-zero state | none | none |
-| Whole-block `rand!` | — | — | — | yes, ~1.7× the scalar path |
-| Extra hooks | `checkseed`, `DEFAULT_SEED` | jump polynomials | — | `stream_key` |
+| | MRG32k3a | MRG63k3a | xoshiro / xoroshiro | PCG64, PCG64DXSM | Philox, Threefry |
+|---|---|---|---|---|---|
+| Native output | `Float64`, ~32-bit resolution | `Float64`, ~63-bit resolution | `UInt64` | `UInt64` | a block of four words |
+| `get_state` returns | `Vector{Int}` (6) | `Vector{Int}` (6) | `Vector{UInt64}` (`N`) | `UInt128` | `(ctr, key, buffer, idx)` |
+| Cost of `advance_state!` | O(e) matrix products | O(e) matrix products | O((64N)²) GF(2) ops, ~10–500 ms | O(log n) multiplies | O(1), a counter addition |
+| `short_jump!`, `long_jump!` | — | — | yes | yes | — |
+| Rejected seeds | `checkseed`: two moduli, no all-zero component | `checkseed63`: same, wider moduli | `checkseed`: the all-zero state | none | none |
+| Whole-block `rand!` | — | — | — | — | yes, ~1.7× the scalar path |
+| Extra hooks | `checkseed`, `DEFAULT_SEED` | `checkseed63`, `DEFAULT_SEED63` | jump polynomials | — | `stream_key` |
 
 For the standard distances on a xoshiro or PCG generator prefer
 `short_jump!`/`long_jump!` over `advance_state!`: they use precomputed

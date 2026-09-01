@@ -117,6 +117,7 @@ the whole interface rests on.
 | Family | Generator object | Stream |
 |---|---|---|
 | MRG32k3a | `MRG32k3aGen` | `MRG32k3a` |
+| MRG63k3a | `MRG63k3aGen` | `MRG63k3a` |
 | xoroshiro128 | `Xoroshiro128pGen`, `Xoroshiro128ssGen`, `Xoroshiro128ppGen` | `Xoroshiro128p`, `Xoroshiro128ss`, `Xoroshiro128pp` |
 | xoshiro256 | `Xoshiro256pGen`, `Xoshiro256ssGen`, `Xoshiro256ppGen` | `Xoshiro256p`, `Xoshiro256ss`, `Xoshiro256pp` |
 | xoshiro512 | `Xoshiro512pGen`, `Xoshiro512ssGen`, `Xoshiro512ppGen` | `Xoshiro512p`, `Xoshiro512ss`, `Xoshiro512pp` |
@@ -147,8 +148,8 @@ worker3 = next_stream!(gen)       # stream 3 — ...
 ```
 
 Each call to `next_stream!` advances the generator's internal seed by a huge
-leap (2^127 values for MRG32k3a, a full `long_jump!` for Xoshiro256+), which is
-what guarantees non-overlap.
+leap (2^127 values for MRG32k3a, 2^250 for MRG63k3a, a full `long_jump!` for
+Xoshiro256+), which is what guarantees non-overlap.
 
 ## Threads
 
@@ -257,7 +258,7 @@ state = get_state(rng)     # a copy; safe to store
 # ... consume numbers ...
 ```
 
-To restore an MRG32k3a state, rebuild the generator with the triple
+To restore an MRG32k3a or MRG63k3a state, rebuild the generator with the triple
 constructor (`Cg`, `Bg`, `Ig` all set to the snapshot):
 
 ```julia
@@ -267,7 +268,7 @@ clone = MRG32k3a(snapshot, snapshot, snapshot)
 rand(clone) == xs[1]       # true — resumes exactly after the snapshot
 ```
 
-MRG32k3a additionally supports arbitrary jumps inside a stream:
+Both MRG generators additionally support arbitrary jumps inside a stream:
 
 ```julia
 advance_state!(rng, e, c)
@@ -332,7 +333,7 @@ assigning non-overlapping work and replaying it identically.
 
 The whole point of the two object families is that code written against them
 does not name a generator. Every family in the package answers to the same
-calls, with the same meanings — the table below is asserted for all sixteen
+calls, with the same meanings — the table below is asserted for all seventeen
 generators in the test suite, not just documented.
 
 On the generator object:
@@ -375,4 +376,4 @@ means taking another key — an operation that belongs to the generator object.
 - Streams produced by successive calls to `next_stream!` on the same generator
   object are **provably non-overlapping**.
 - Substreams likewise partition a stream into disjoint blocks
-  (length ≈ 2^76 steps for MRG32k3a).
+  (length ≈ 2^76 steps for MRG32k3a, 2^150 for MRG63k3a).

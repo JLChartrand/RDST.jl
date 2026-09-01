@@ -38,6 +38,12 @@ constructors and `Cg`; and computing the output from the current state before
 the update, which needs the state kept one step ahead to preserve the stream,
 gives 231 and changes what `get_state` and the jump matrices operate on.
 
+That second variant is Vigna's third optimization, and the conclusion does
+**not** carry over to MRG63k3a, where it is worth 7% and is used — see below.
+Re-measured here with the same harness, MRG32k3a gives 236 against 235: the
+32-bit step is short enough that the combination is already hidden behind it,
+so there is nothing to overlap.
+
 ### Modular arithmetic in the jump machinery
 
 All state components stay below `m1 < 2^32`, so products fit in `Float64`
@@ -64,6 +70,120 @@ precomputed matrix power applied to the state vector:
 The RNG keeps three checkpoints: `Cg` (current), `Bg` (substream start),
 `Ig` (stream start), which is what makes `reset_substream!` and
 `reset_stream!` O(1).
+
+## MRG63k3a
+
+The same construction as MRG32k3a, sized for 64-bit arithmetic: the fourth
+entry of Table II in L'Ecuyer (1999), which he implements in C as `MRG63k3a`.
+
+```
+p1 = (1754669720 · x2 −  3182104042 · x0) mod m1,   m1 = 2^63 − 6645
+p2 = (31387477935 · y2 − 6199136374 · y0) mod m2,   m2 = 2^63 − 21129
+u  = (p1 − p2) / (m1 + 1)   (with wrap-around) ∈ (0, 1)
+```
+
+Period ≈ `2^377`, against `2^191`; entropy per step `log2(m1) = 63.0` bits,
+against 32.0. The package reproduces L'Ecuyer's C implementation value for
+value, checked on three seeds and a million draws.
+
+### Reduction without a 128-bit division
+
+The products no longer fit in a `Float64` mantissa — that is the whole reason
+this generator is a separate implementation and not a parameter set — so they
+are computed with `widemul` into an `Int128`. What must be avoided then is the
+remainder: a 128-bit `%` is a software routine, and it would dominate the step.
+
+Both moduli are pseudo-Mersenne, `m = 2^63 − c` with `c` small, so the
+reduction is two shifts, a multiply and an add. Splitting the 128-bit value at
+bit 63 as `t = hi·2^63 + lo` gives
+
+```
+t ≡ hi·c + lo   (mod m),         since 2^63 ≡ c (mod m).
+```
+
+With the same testless formulation as MRG32k3a — the negative coefficient
+carried positive and a multiple of the modulus added — `t` stays below `2^99`,
+so `hi < 2^36` and `hi·c < 2^51`: the folded value is below `2^63 + 2^51`,
+which is under `2m`, and one conditional subtraction finishes it. The
+combination `z = p1 − p2 mod m1` then uses the same arithmetic shift as
+MRG32k3a. The whole step compiles to 61 instructions with no division and no
+branch — the two conditional subtractions become conditional moves.
+
+The reference C code takes a different route to the same values, Bratley,
+Fox & Schrage's approximate factoring (`q = m ÷ a`, `r = m mod a`), which keeps
+every intermediate inside a 64-bit signed integer at the cost of two divisions
+and two branches per coefficient. That is the right choice for a 1999 C
+compiler and the wrong one here: the reduction above is what makes MRG63k3a
+*faster* than MRG32k3a per random bit rather than slower. The alternative was
+measured, not assumed — a plain 128-bit remainder instead of the fold runs at
+19 million draws per second against 196, a factor of ten.
+
+### The state runs one step ahead
+
+Vigna's three optimizations for MRG32k3a are the testless formulation above,
+the branchless combination, and computing the output from the *current* state
+so that the processor overlaps it with the next state. The first two are shared
+with MRG32k3a; the third is used **here only**, because it is the one place
+where the two generators measure differently:
+
+| | MRG32k3a | MRG63k3a |
+|---|---|---|
+| output from the new state | 236 M/s | 183 M/s |
+| output from the current state | 235 M/s | **196 M/s** |
+
+The 63-bit step is a `widemul` and a fold, long enough that the combination
+sitting at the end of it is visible; the 32-bit step is a `Float64` multiply
+and a compiler-optimised `%`, short enough that it is not. So `next_pair!`
+returns the pair already in `Cg[3]`, `Cg[6]` and computes the next one, and the
+state vector is one step ahead of the position.
+
+That shift is invisible from outside. It costs nothing anywhere it might have:
+the jump matrices commute with the one-step matrix, so `advance_state!`,
+`next_substream!`, `next_stream!` and the `Bg`/`Ig` checkpoints operate on the
+shifted vector unchanged, and jumping a shifted state gives the shifted jumped
+state. Only the boundary converts — the constructors and `Random.seed!` step a
+seed forward, `get_state` and `show` step the stored vector back — at one
+matrix-vector product each, on paths that are never hot. The stream is
+identical bit for bit, which is what the reference vectors from L'Ecuyer's C
+code check.
+
+### Jump matrices
+
+`MultModM` here is the straightforward `widemul` plus 128-bit `mod`, since it
+serves only the jump machinery, never the draw. The matrix helpers are the same
+four as for MRG32k3a.
+
+The jump distances are **not** L'Ecuyer's: he published `A1p76`/`A1p127` for
+MRG32k3a and nothing for MRG63k3a. This package uses `2^150` between substreams
+and `2^250` between streams — his `2^76` and `2^127` scaled by the ratio of the
+two periods, `377/191 ≈ 1.97` — which cuts the period into `2^127` streams of
+`2^100` substreams of `2^150` numbers each. The four matrices are computed by
+repeated squaring at precompilation rather than tabulated, roughly 400 matrix
+products, and the test suite checks the arithmetic that produces them:
+`A · InvA = I` for both components, `(A^(2^150))^(2^100) = A^(2^250)`,
+`next_substream!` equal to `advance_state!(rng, 150, 0)`, and `next_stream!`
+equal to `advance_state!(rng, 250, 0)`. The formulas behind `InvA1` and `InvA2`
+are checked by a route that does not depend on this generator at all: applied
+to MRG32k3a's coefficients they must reproduce the inverse matrices L'Ecuyer
+tabulates, and they do.
+
+### Integer outputs
+
+Same construction as MRG32k3a, one size up: `z ∈ [1, m1]` is truncated to
+32-bit chunks and wider words are concatenations of consecutive chunks. A
+`UInt64` is two steps, against four; a `UInt32` is one, against two. Because
+`m1 = 2^63 − 6645`, a residue class modulo `2^32` holds `2^31` values give or
+take one, so the departure from uniformity is of order `2^-31` per chunk
+against `2^-16` for MRG32k3a. Still not exact — no exact uniform word comes out
+of a non-power-of-two modulus without rejection — but two orders of magnitude
+closer, at half the cost.
+
+`Float64` remains the native output (`Random.rng_native_52`): one step covers a
+double, where declaring the word native would make every double cost two.
+
+The one-step-ahead ordering helps the paths whose critical path ends in the
+combination — `Float64` and `UInt32` — and not `UInt64`, where two steps run
+back to back and the recurrence, not the combination, is the chain.
 
 ## Xoshiro256+
 
@@ -275,13 +395,16 @@ is the regression net.
 
 Narrower types are truncations of one chunk. None of these integers is exactly
 uniform over its full width — fine for indexing, shuffling and flags in a
-simulation, not for cryptographic use.
+simulation, not for cryptographic use. `MRG63k3a` above is the same
+construction with twice the chunk width and half the steps per word; it is
+the one to reach for when a run consumes integers rather than floats.
 
 ## Testing strategy
 
 Reference sequences were captured from the reference implementations
-(L'Ecuyer's C code semantics for MRG32k3a; Vigna's constants for the xoshiro
-jumps) and regression-checked after optimization: identical outputs are
+(L'Ecuyer's C code for MRG32k3a and MRG63k3a — for the latter, ten doubles, the
+draw one million steps later, and the raw combined integer on three seeds;
+Vigna's constants for the xoshiro jumps) and regression-checked after optimization: identical outputs are
 produced for every supported type, plus reset/jump/state round-trips.
 
 ## Performance snapshot
@@ -310,44 +433,46 @@ variation is a few percent, so read differences below that as noise.
 
 | Generator | `Float64` | ns | `UInt64` | ns | `UInt32` | ns |
 |---|---|---|---|---|---|---|
-| `MRG32k3a` | 236 | 4.25 | 47 | 21.20 | 95 | 10.55 |
-| `Xoroshiro128p` | 695 | 1.44 | 941 | 1.06 | 1090 | 0.92 |
+| `MRG32k3a` | 236 | 4.25 | 47 | 21.06 | 95 | 10.48 |
+| `MRG63k3a` | 196 | 5.10 | 93 | 10.76 | 199 | 5.04 |
+| `Xoroshiro128p` | 697 | 1.43 | 941 | 1.06 | 1090 | 0.92 |
 | `Xoroshiro128ss` | 655 | 1.53 | 876 | 1.14 | 848 | 1.18 |
-| `Xoroshiro128pp` | 599 | 1.67 | 819 | 1.22 | 927 | 1.08 |
-| `Xoshiro256p` | 788 | 1.27 | 1168 | 0.86 | 1221 | 0.82 |
-| `Xoshiro256ss` | 715 | 1.40 | 1058 | 0.95 | 933 | 1.07 |
-| `Xoshiro256pp` | 670 | 1.49 | 1006 | 0.99 | 1054 | 0.95 |
+| `Xoroshiro128pp` | 599 | 1.67 | 818 | 1.22 | 926 | 1.08 |
+| `Xoshiro256p` | 788 | 1.27 | 1242 | 0.81 | 1221 | 0.82 |
+| `Xoshiro256ss` | 715 | 1.40 | 1140 | 0.88 | 962 | 1.04 |
+| `Xoshiro256pp` | 688 | 1.45 | 1032 | 0.97 | 1055 | 0.95 |
 | `Xoshiro512p` | 570 | 1.75 | 798 | 1.25 | 742 | 1.35 |
 | `Xoshiro512ss` | 523 | 1.91 | 742 | 1.35 | 614 | 1.63 |
-| `Xoshiro512pp` | 532 | 1.88 | 725 | 1.38 | 709 | 1.41 |
-| `PCG64` | 504 | 1.98 | 599 | 1.67 | 600 | 1.67 |
-| `PCG64DXSM` | 561 | 1.78 | 743 | 1.35 | 743 | 1.35 |
-| `Philox4x32-10` | 93 | 10.76 | 109 | 9.20 | 272 | 3.68 |
-| `Philox4x64-10` | 210 | 4.76 | 273 | 3.66 | 265 | 3.77 |
-| `Threefry4x32-20` | 84 | 11.89 | 92 | 10.89 | 186 | 5.39 |
-| `Threefry4x64-20` | 147 | 6.81 | 153 | 6.52 | 154 | 6.50 |
+| `Xoshiro512pp` | 532 | 1.88 | 725 | 1.38 | 665 | 1.50 |
+| `PCG64` | 504 | 1.99 | 599 | 1.67 | 605 | 1.65 |
+| `PCG64DXSM` | 561 | 1.78 | 743 | 1.35 | 745 | 1.34 |
+| `Philox4x32-10` | 93 | 10.75 | 109 | 9.20 | 272 | 3.68 |
+| `Philox4x64-10` | 203 | 4.94 | 262 | 3.82 | 259 | 3.86 |
+| `Threefry4x32-20` | 84 | 11.86 | 92 | 10.89 | 186 | 5.39 |
+| `Threefry4x64-20` | 147 | 6.80 | 153 | 6.52 | 157 | 6.35 |
 
 Array fill with `rand!`, millions of elements per second (nanoseconds per
 element is `1000` over the figure):
 
 | Generator | `Float64` | `UInt64` | `UInt32` |
 |---|---|---|---|
-| `MRG32k3a` | 159 | 46 | 92 |
-| `Xoroshiro128p` | 554 | 581 | 576 |
-| `Xoroshiro128ss` | 542 | 543 | 519 |
-| `Xoroshiro128pp` | 499 | 511 | 510 |
+| `MRG32k3a` | 163 | 47 | 94 |
+| `MRG63k3a` | 184 | 93 | 185 |
+| `Xoroshiro128p` | 546 | 581 | 581 |
+| `Xoroshiro128ss` | 531 | 538 | 520 |
+| `Xoroshiro128pp` | 507 | 500 | 511 |
 | `Xoshiro256p` | 501 | 519 | 520 |
-| `Xoshiro256ss` | 496 | 519 | 475 |
-| `Xoshiro256pp` | 471 | 505 | 512 |
-| `Xoshiro512p` | 377 | 394 | 426 |
-| `Xoshiro512ss` | 361 | 384 | 389 |
-| `Xoshiro512pp` | 373 | 379 | 408 |
-| `PCG64` | 574 | 622 | 621 |
-| `PCG64DXSM` | 632 | 735 | 735 |
-| `Philox4x32-10` | 157 | 178 | 347 |
+| `Xoshiro256ss` | 492 | 520 | 472 |
+| `Xoshiro256pp` | 471 | 505 | 507 |
+| `Xoshiro512p` | 380 | 391 | 426 |
+| `Xoshiro512ss` | 375 | 393 | 390 |
+| `Xoshiro512pp` | 377 | 389 | 408 |
+| `PCG64` | 575 | 643 | 628 |
+| `PCG64DXSM` | 632 | 744 | 735 |
+| `Philox4x32-10` | 158 | 178 | 349 |
 | `Philox4x64-10` | 359 | 339 | 257 |
-| `Threefry4x32-20` | 100 | 106 | 204 |
-| `Threefry4x64-20` | 207 | 177 | 152 |
+| `Threefry4x32-20` | 100 | 106 | 206 |
+| `Threefry4x64-20` | 209 | 181 | 156 |
 
 What the tables say. Within each xoshiro family the ordering is the same and
 the spread is small: `+` is fastest, then `**`, then `++`, within about 15% of
@@ -358,8 +483,8 @@ magnitude below on `Float64`, which is what buying a keyed bijection per block
 costs, and the two 32-bit ciphers are fastest in `UInt32`, where a draw is one
 cipher word rather than two.
 
-The two PCG variants land between the xoshiro families and MRG32k3a, at
-roughly two thirds of `Xoshiro256p`: a 128-bit multiply per draw is more work
+The two PCG variants land between the xoshiro families and the MRG generators,
+at roughly two thirds of `Xoshiro256p`: a 128-bit multiply per draw is more work
 than a handful of shifts and xors. `PCG64DXSM` is the faster of the two despite
 its extra output multiply, because its "cheap" 64-bit multiplier turns the
 128x128 state multiplication into a 64x128 one. Both are the fastest generators
@@ -367,16 +492,30 @@ in the package under `rand!`, ahead of every xoshiro: the whole state is one
 128-bit word, so the bulk loop touches far less memory per element than a
 four- or eight-word state does.
 
-The one outlier is `MRG32k3a` in `UInt64`, at 21.2 ns against 4.3 ns for its
+The one outlier is `MRG32k3a` in `UInt64`, at 21.1 ns against 4.3 ns for its
 `Float64`: a 64-bit word costs four MRG steps, because the modulus is not a
 power of two and the word is assembled from 16-bit chunks. See the section on
 its integer outputs.
 
+`MRG63k3a` is where that cost goes away, and the two rows read as one trade.
+Its `Float64` is 20% slower (5.10 ns against 4.25) — the step is a 128-bit
+multiply where MRG32k3a's is a `Float64` one — while its `UInt64` is 2.0×
+faster (10.76 ns against 21.06) and its `UInt32` 2.1× faster (5.04 against
+10.48), because a word is two 32-bit chunks rather than four 16-bit ones. Per
+random *bit* it is ahead everywhere: 0.081 ns against 0.133 for the double,
+where 63 bits come out of the same one step.
+
+In bulk it is the recurrence-based generator that loses least: 184 against 196
+million `Float64`/s is a drop of 6%, where MRG32k3a drops 31% and the xoshiro
+families about a third. Its `UInt64` is flat at 93 either way. Why the drop is
+so much smaller here than for its sibling is not something these figures
+settle, so it is reported and not explained.
+
 The counter-based generators are the ones that gain from filling an array:
 `rand!` produces whole blocks straight into it, so the counter, the block
 buffer and the index are touched once per block instead of once per draw.
-Philox4x64-10 goes from 210 to 359 million `Float64` per second, a factor of
-1.7. The recurrence-based generators have no such block to exploit and are
+Philox4x64-10 goes from 203 to 359 million `Float64` per second, a factor of
+1.77. The recurrence-based generators have no such block to exploit and are
 *slower* in bulk than in the accumulator loop, by the cost of the stores.
 
 Two combinations get no block path and fall back to the scalar loop: `UInt32`

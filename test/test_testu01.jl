@@ -21,6 +21,7 @@ end
     
     generators = [
         ("MRG32k3a", MRG32k3aGen),
+        ("MRG63k3a", MRG63k3aGen),
         ("Xoshiro256+", () -> Xoshiro256plusGen([0x01, 0x02, 0x03, 0x04])),
         ("Philox4x32-10", PhiloxGen),
         ("Philox4x64-10", Philox4x64Gen),

@@ -6,6 +6,41 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **MRG63k3a** (L'Ecuyer 1999, Table II, fourth entry): `MRG63k3a` and
+  `MRG63k3aGen`, the 64-bit-arithmetic member of the MRG32k3a family. Two
+  moduli just under `2^63`, period ≈ `2^377`, and just under 63 random bits per
+  step against 32 for MRG32k3a — so a `UInt64` costs two steps instead of four,
+  and its 32-bit chunks depart from uniformity by `2^-31` rather than `2^-16`.
+  Output matches L'Ecuyer's own C implementation value for value. The package
+  was testing MRG32k3a's assembled 64-bit words without shipping the generator
+  that has 64 bits to give; now it ships both.
+
+  The stream and substream distances, `2^250` and `2^150`, are this package's
+  choice: L'Ecuyer published jump matrices for MRG32k3a only. They are his
+  `2^127` and `2^76` scaled by the ratio of the two periods, and the matrices
+  are computed at precompilation rather than tabulated. `advance_state!`,
+  `next_substream!`, `next_stream!`, `get_state`/`set_state!`, `srand!` and
+  `Random.seed!` behave exactly as for MRG32k3a.
+
+  The draw avoids a 128-bit remainder: both moduli are `2^63 - c` with `c`
+  small, so the reduction is a shift, a multiply, an add and one conditional
+  subtraction — a plain remainder is ten times slower, measured. All three of
+  Vigna's optimizations for MRG32k3a are in place, including the one this
+  package had measured and rejected for the 32-bit generator: keeping the state
+  one step ahead so the output overlaps the next state is worth nothing there
+  (236 against 235 M/s) and 7% here (196 against 183). The shift is hidden
+  behind the API — `get_state` and `show` step back, the constructors and
+  `Random.seed!` step forward, and the jump matrices commute with it, so
+  streams, substreams and `advance_state!` are untouched.
+
+  It joins every generator list in the suite: SmallCrush on one stream, on 64
+  interleaved streams, and on the `UInt32` and `UInt64` bit paths; the threads
+  suite; the uniform-interface matrix; the on-demand Crush/BigCrush harness; and
+  `notebooks/streams_tour.ipynb`, which now also shows the two MRG word sizes
+  side by side.
+
 ## [0.2.0]
 
 Two new generator families, and one breaking change to seeding.

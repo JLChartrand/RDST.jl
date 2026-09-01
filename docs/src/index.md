@@ -5,6 +5,8 @@ streams and substreams:
 
 - **MRG32k3a** (L'Ecuyer et al. 2002) — the reference combined MRG of the
   simulation literature;
+- **MRG63k3a** (L'Ecuyer 1999) — the same construction in 64-bit arithmetic:
+  period ≈ 2^377, and a step that yields 63 random bits instead of 32;
 - the **xoshiro / xoroshiro** families (Blackman & Vigna) — 128, 256 and
   512 bits of state, three scramblers each;
 - **PCG64** and **PCG64DXSM** (O'Neill) — the default bit generator of NumPy,

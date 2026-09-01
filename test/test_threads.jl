@@ -20,6 +20,7 @@ using Base.Threads
 
 const THREAD_FAMILIES = Pair{String,Any}[
     "MRG32k3a"        => () -> MRG32k3aGen(12345),
+    "MRG63k3a"        => () -> MRG63k3aGen(12345),
     "Xoshiro256pp"    => () -> Xoshiro256ppGen(12345),
     "Xoroshiro128ss"  => () -> Xoroshiro128ssGen(12345),
     "PCG64"           => () -> PCG64Gen(12345),

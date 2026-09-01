@@ -4,10 +4,10 @@ RandomDataStreams.jl ships two kinds of generator. They differ in how a stream
 is defined, which is what makes them suited to different jobs — throughput is
 the smaller part of the choice.
 
-**Recurrence-based** generators (MRG32k3a, the xoshiro/xoroshiro families) hold
-a state and a transition function. There is one orbit, and a stream is a
-*segment* of it: `next_stream!` jumps a fixed, huge distance along the orbit,
-and non-overlap is a statement about those distances.
+**Recurrence-based** generators (MRG32k3a and MRG63k3a, the xoshiro/xoroshiro
+families) hold a state and a transition function. There is one orbit, and a
+stream is a *segment* of it: `next_stream!` jumps a fixed, huge distance along
+the orbit, and non-overlap is a statement about those distances.
 
 **Counter-based** generators (Philox, Threefry) hold a counter and a key, and
 produce a block as a keyed bijection of the counter, `R = b_K(C)`. A stream is
@@ -26,18 +26,19 @@ alone — see [Streams & Substreams](streams.md).
 
 ## Recurrence-based generators
 
-| Property | MRG32k3a | PCG64 | Xoroshiro128* | Xoshiro256* | Xoshiro512* |
-|---|---|---|---|---|---|
-| State (bits) | 192 (6 × Int64) | 128 | 128 | 256 | 512 |
-| Period | ≈ 2^191 | 2^128 | 2^128 − 1 | 2^256 − 1 | 2^512 − 1 |
-| Native output | `Float64` [0,1), ~32-bit resolution | `UInt64` | `UInt64` | `UInt64` | `UInt64` |
-| `Float64` throughput | 236 M/s | 504 M/s (DXSM 561) | ≈ 600–695 M/s | ≈ 670–790 M/s | ≈ 520–570 M/s |
-| Stream mechanism | matrix power A^2^127 on the seed | closed-form LCG jump (2^32(2^64+1)+1) | `long_jump!` polynomial (2^96) | `long_jump!` (2^192) | `long_jump!` (2^384) |
-| Substream mechanism | matrix power A^2^76 | closed-form (2^64+1) | `short_jump!` (2^64) | `short_jump!` (2^128) | `short_jump!` (2^256) |
-| Backward jumps | yes (`advance_state!`) | yes, same cost as forward | yes (`advance_state!`, GF(2) polynomials) | yes (`advance_state!`) | yes (`advance_state!`) |
-| Arbitrary-jump cost | O(e) matrix products | **O(log n) multiplies** | O(deg²) GF(2) ops (~10–500 ms) | same | same |
-| Equidistribution | well analysed theory | none published | 1-dim (**/++) / 0-dim (+) | 3-dim (**/++) / 2-dim (+) | 7-dim (**/++) / 6-dim (+) |
-| Parallelism scale advised | large | mild (2^32 streams) | mild (≈ 2^32 streams) | very large | extreme |
+| Property | MRG32k3a | MRG63k3a | PCG64 | Xoroshiro128* | Xoshiro256* | Xoshiro512* |
+|---|---|---|---|---|---|---|
+| State (bits) | 192 (6 × Int64) | 384 (6 × Int64) | 128 | 128 | 256 | 512 |
+| Period | ≈ 2^191 | ≈ 2^377 | 2^128 | 2^128 − 1 | 2^256 − 1 | 2^512 − 1 |
+| Native output | `Float64` [0,1), ~32-bit resolution | `Float64` (0,1), ~63-bit resolution | `UInt64` | `UInt64` | `UInt64` | `UInt64` |
+| `Float64` throughput | 236 M/s | 196 M/s | 504 M/s (DXSM 561) | ≈ 599–697 M/s | ≈ 688–788 M/s | ≈ 523–570 M/s |
+| `UInt64` throughput | 47 M/s (4 steps) | 93 M/s (2 steps) | 599 M/s (DXSM 743) | ≈ 818–941 M/s | ≈ 1032–1242 M/s | ≈ 725–798 M/s |
+| Stream mechanism | matrix power A^2^127 on the seed | matrix power A^2^250 on the seed | closed-form LCG jump (2^32(2^64+1)+1) | `long_jump!` polynomial (2^96) | `long_jump!` (2^192) | `long_jump!` (2^384) |
+| Substream mechanism | matrix power A^2^76 | matrix power A^2^150 | closed-form (2^64+1) | `short_jump!` (2^64) | `short_jump!` (2^128) | `short_jump!` (2^256) |
+| Backward jumps | yes (`advance_state!`) | yes (`advance_state!`) | yes, same cost as forward | yes (`advance_state!`, GF(2) polynomials) | yes (`advance_state!`) | yes (`advance_state!`) |
+| Arbitrary-jump cost | O(e) matrix products | O(e) matrix products | **O(log n) multiplies** | O(deg²) GF(2) ops (~10–500 ms) | same | same |
+| Equidistribution | well analysed theory | well analysed theory | none published | 1-dim (**/++) / 0-dim (+) | 3-dim (**/++) / 2-dim (+) | 7-dim (**/++) / 6-dim (+) |
+| Parallelism scale advised | large | very large | mild (2^32 streams) | mild (≈ 2^32 streams) | very large | extreme |
 
 (`*` means any of the `+`, `**`, `++` scramblers. `PCG64DXSM` has the same
 structure as `PCG64`, with a different output permutation and multiplier.)
@@ -69,6 +70,25 @@ which state the measurement method and the machine; read them as ratios.
 - Your application consumes **floats only**: MRG32k3a emits them natively. Its
   wide integers are assembled from 16-bit chunks and cost four MRG steps.
 - You can afford ~3× slower generation than xoshiro.
+
+## When to choose MRG63k3a
+
+Same author, same construction, same stream semantics, sized for 64-bit
+arithmetic (L'Ecuyer 1999, Table II, fourth entry):
+
+- You want the **MRG stream model but your run consumes integers**. A `UInt64`
+  is two steps instead of four, and the 32-bit chunks it is built from depart
+  from uniformity by `2^-31` where MRG32k3a's 16-bit chunks depart by `2^-16`.
+- You want the **longer period** — `2^377` against `2^191` — and the room it
+  buys: `2^127` streams of `2^100` substreams of `2^150` numbers.
+- You are **not** bound to the published MRG32k3a stream ids. MRG63k3a's
+  jump distances are this package's own choice; nothing else implements them,
+  so a run cannot be replayed stream-for-stream against another library.
+- Prefer MRG32k3a if the run is float-heavy: on `Float64` the 63-bit generator
+  is about 17% slower (196 against 236 M/s), because the step costs a 128-bit
+  multiply. It is ahead on every integer type — 93 against 47 M `UInt64`/s,
+  199 against 95 M `UInt32`/s, and 184 against 163 M `Float64`/s under `rand!`
+  — and ahead per random *bit* everywhere.
 
 ## When to choose a xoshiro/xoroshiro variant
 

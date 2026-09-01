@@ -9,7 +9,8 @@ using Random
 import Base: rand, show, copy
 
 export AbstractRNGStream, AbstractStreamableRNG
-export checkseed, MRG32k3a, rand, srand!, reset_stream!, reset_substream!, next_substream!, MRG32k3aGen, show, get_state, set_state!, next_stream!
+export checkseed, checkseed63, MRG32k3a, rand, srand!, reset_stream!, reset_substream!, next_substream!, MRG32k3aGen, show, get_state, set_state!, next_stream!
+export MRG63k3a, MRG63k3aGen
 export Xoshiro256p, Xoshiro256plusGen, short_jump!, long_jump!, advance_state!
 # deprecated names kept for compatibility (warn on use)
 export srand, short_jump, long_jump, next_stream
@@ -19,6 +20,9 @@ export srand, short_jump, long_jump, next_stream
 ###mrg32k3a
 include("abstract.jl")
 include("mrg32k3a/main.jl")
+
+###mrg63k3a, the 64-bit-arithmetic member of the same family (L'Ecuyer 1999)
+include("mrg63k3a/main.jl")
 
 ###xoshiro / xoroshiro families (Blackman & Vigna)
 include("xoshiro/xos256p.jl")

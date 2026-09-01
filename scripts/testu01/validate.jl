@@ -47,6 +47,7 @@ seed_words(n::Int) = RandomDataStreams._splitmix_words(UInt64(12345), n)
 # produces it, so that all three suites cover the same set.
 const GENERATOR_STREAMS = Pair{String,Any}[
     "MRG32k3a"        => MRG32k3aGen,
+    "MRG63k3a"        => MRG63k3aGen,
     "Xoroshiro128p"   => () -> Xoroshiro128pGen(seed_words(2)),
     "Xoroshiro128ss"  => () -> Xoroshiro128ssGen(seed_words(2)),
     "Xoroshiro128pp"  => () -> Xoroshiro128ppGen(seed_words(2)),

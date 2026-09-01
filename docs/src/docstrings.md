@@ -17,6 +17,14 @@ MRG32k3aGen
 checkseed
 ```
 
+## MRG63k3a
+
+```@docs
+MRG63k3a
+MRG63k3aGen
+checkseed63
+```
+
 ## Xoshiro / xoroshiro families
 
 ```@docs
@@ -58,6 +66,7 @@ RandomDataStreams.CBGen
 
 ```@docs
 rand(::MRG32k3a)
+rand(::MRG63k3a)
 rand(::RandomDataStreams.LinRNG)
 rand(::RandomDataStreams.LinRNG, ::Type{Float32})
 rand(::RandomDataStreams.LinRNG, ::Type{Float16})
@@ -70,6 +79,7 @@ rand(::PCGRNG, ::Type{Float32})
 rand(::PCGRNG, ::Type{Float16})
 rand(::PCGRNG, ::UnitRange{Int64})
 rand(::MRG32k3a, ::RandomDataStreams.Random.SamplerTrivial{RandomDataStreams.Random.CloseOpen12_64})
+rand(::MRG63k3a, ::RandomDataStreams.Random.SamplerTrivial{RandomDataStreams.Random.CloseOpen12_64})
 short_jump!
 long_jump!
 advance_state!

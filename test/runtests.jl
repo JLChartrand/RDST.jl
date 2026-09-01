@@ -179,6 +179,375 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         @test get_state(g2) != [1, 2, 3, 4, 5, 6]   # internal seed advanced
     end
 
+    @testset "checkseed63" begin
+        P = RandomDataStreams.PMF63
+        @test checkseed63(RandomDataStreams.DEFAULT_SEED63)
+        @test !checkseed63([1, 2, 3, 4, 5])                     # wrong length
+        @test !checkseed63([0, 0, 0, 1, 1, 1])                  # all-zero first component
+        @test !checkseed63([1, 1, 1, 0, 0, 0])                  # all-zero second component
+        @test !checkseed63([-1, 1, 1, 1, 1, 1])                 # negative entry
+        @test !checkseed63([P.m1, 1, 1, 1, 1, 1])               # >= m1 in first half
+        @test !checkseed63([1, 1, 1, P.m2, 1, 1])               # >= m2 in second half
+        @test checkseed63([P.m1 - 1, P.m2 - 1, 7, P.m2 - 1, 3, 9])
+        # the moduli are the ones of Table II, fourth entry
+        @test P.m1 == 2^63 - 6645 && P.m2 == 2^63 - 21129
+        @test P.norm == 1.0842021724855052e-19                  # as in the reference C code
+    end
+
+    @testset "MRG63k3a modular reduction" begin
+        # The step avoids a 128-bit remainder by folding at bit 63. What makes
+        # that valid is a bound on the argument, so both the identity and the
+        # bound are checked, over the exact range the step can produce and at
+        # its endpoints.
+        P = RandomDataStreams.PMF63
+        hi1 = Int128(P.a12 + P.a13n) * P.m1        # largest component-1 argument
+        hi2 = Int128(P.a21 + P.a23n) * P.m2        # largest component-2 argument
+        @test hi1 < Int128(1) << 96
+        @test hi2 < Int128(1) << 99
+
+        for t in (Int128(0), Int128(1), Int128(P.m1) - 1, Int128(P.m1),
+                  Int128(P.m1) + 1, Int128(1) << 63, hi1, hi1 - 1)
+            @test P.mod_m1(t) == mod(t, Int128(P.m1))
+        end
+        for t in (Int128(0), Int128(1), Int128(P.m2) - 1, Int128(P.m2),
+                  Int128(P.m2) + 1, Int128(1) << 63, hi2, hi2 - 1)
+            @test P.mod_m2(t) == mod(t, Int128(P.m2))
+        end
+
+        rng = MRG32k3a(20260901)                   # an independent source
+        bad = 0
+        for _ in 1:20_000
+            t1 = Int128(rand(rng, UInt64)) * rand(rng, UInt32) % (hi1 + 1)
+            t2 = Int128(rand(rng, UInt64)) * rand(rng, UInt32) % (hi2 + 1)
+            P.mod_m1(t1) == mod(t1, Int128(P.m1)) || (bad += 1)
+            P.mod_m2(t2) == mod(t2, Int128(P.m2)) || (bad += 1)
+        end
+        @test bad == 0
+    end
+
+    @testset "MRG63k3a reference values" begin
+        # L'Ecuyer's own C implementation of MRG63k3a (Operations Research 47,
+        # 1 (1999), Table II, fourth entry), run with its own default seed:
+        # every state variable at 123456789.
+        rng = MRG63k3a(fill(123456789, 6))
+        @test [rand(rng) for _ in 1:10] ==
+              [0.6437422003439717,  0.930832893185952,   0.7842438837551243,
+               0.31770814625739846, 0.6939887409593761,  0.27038650781966916,
+               0.7341627140120408,  0.07111609732185895, 0.18504500900319684,
+               0.1989539243417336]
+
+        # ... and still in step a million draws later, which is the part that
+        # would break if the modular reduction were merely almost right.
+        for _ in 11:1_000_000
+            rand(rng)
+        end
+        @test rand(rng) == 0.16846629392794513
+
+        # The integer z in [1, m1] behind those doubles, for three seeds: the
+        # default one, a tiny one, and one against the top of each modulus.
+        # Taken from the same C program, printed before the normalisation.
+        P = RandomDataStreams.PMF63
+        zs(seed, n) = (r = MRG63k3a(seed);
+                       [RandomDataStreams.combine63(RandomDataStreams.next_pair!(r)...)
+                        for _ in 1:n])
+        @test zs(fill(123456789, 6), 6) ==
+              [5937473809595949476, 8585418077995931278, 7233373107501396343,
+               2930340432071454314, 6400916347256758513, 2493875355366750018]
+        @test zs([1, 2, 3, 4, 5, 6], 6) ==
+              [9223371873653682447, 4676622457246299043, 6666800424851934373,
+               94748724783950719,   30418792941617299,   2346650931207009463]
+        @test zs([P.m1 - 1, 0, 1, P.m2 - 1, 1, 0], 6) ==
+              [9223372033837736831, 8338928663777515826, 4220650215078059018,
+               1264970491331603831, 8782366725965330982, 4939471023159614097]
+
+        # The integer paths are ours, not L'Ecuyer's -- he specifies a double.
+        # Locked here the way MRG32k3a's are, as a regression net.
+        r0 = next_stream!(MRG63k3aGen())
+        @test [rand(r0) for _ in 1:5] ==
+              [0.999964376179128, 0.3293712031670167, 0.6728066002975757,
+               0.8707612110911583, 0.7121206375374564]
+
+        for (T, ref) in (
+            (UInt8,   UInt8[0x18, 0xa2, 0x16]),
+            (UInt16,  UInt16[0xc518, 0x59a2, 0xd016]),
+            (UInt32,  UInt32[0x6d5cc518, 0xec5a59a2, 0x67cfd016]),
+            (UInt64,  UInt64[0x6d5cc518ec5a59a2, 0x67cfd01621852115, 0x83d87361f770fd6e]),
+            (UInt128, UInt128[0x6d5cc518ec5a59a267cfd01621852115,
+                              0x83d87361f770fd6ef596a755820cadca,
+                              0x2cd6bb0f94bd342704d866ea9f77f327]),
+            (Int8,    Int8[24, -94, 22]),
+            (Int16,   Int16[-15080, 22946, -12266]),
+            (Int32,   Int32[1834796312, -329623134, 1741672470]),
+            (Int64,   Int64[7880390158826756514, 7480426299555914005,
+                            -8946273795171091090]),
+            (Int128,  Int128[145367540460856542937830089570103140629,
+                             -165029623112855383596246194477897830966,
+                             59600977387313586812902884216453722919]),
+            (Float32, Float32[0.7247648, 0.7058604, 0.6235378]),
+            (Float16, Float16[0.2734, 0.4082, 0.02148]),
+            (Bool,    Bool[0, 0, 0]),
+        )
+            r = next_stream!(MRG63k3aGen())
+            @test [rand(r, T) for _ in 1:3] == ref
+        end
+
+        # a wide word is the concatenation of consecutive 32-bit chunks: two
+        # steps for a UInt64 here, where MRG32k3a needs four
+        a, b = MRG63k3a(), MRG63k3a()
+        w = rand(a, UInt64)
+        @test w == (UInt64(rand(b, UInt32)) << 32) | rand(b, UInt32)
+        @test get_state(a) == get_state(b)
+    end
+
+    @testset "both MRGs match L'Ecuyer's C over 10^7 draws" begin
+        # The reference vectors above pin the first few values. This pins the
+        # whole run: an FNV-1a digest over the exact combined integer z of ten
+        # million draws, for each of several seeds, taken from L'Ecuyer's own C
+        # code (MRG32k3a.c and MRG63k3a.c) instrumented to print z before the
+        # normalisation. A divergence anywhere -- a reduction that is wrong
+        # only for rare arguments, a reordering that drops a step -- moves the
+        # digest, where the first five values would not notice.
+        #
+        # Regenerate by running the same digest over the C implementations:
+        #   h = 14695981039346656037; for each z: h = (h XOR z) * 1099511628211
+        # in unsigned 64-bit arithmetic.
+        fnv(h::UInt64, x::UInt64) = (h ⊻ x) * 0x100000001b3
+
+        function digest(mk, zfun, n = 10_000_000)
+            r = mk()
+            h = 0xcbf29ce484222325
+            z = UInt64(0)
+            for _ in 1:n
+                z = UInt64(zfun(r))
+                h = fnv(h, z)
+            end
+            return h, z
+        end
+
+        z32(r) = RandomDataStreams.combine(RandomDataStreams.next_pair!(r)...)
+        z63(r) = RandomDataStreams.combine63(RandomDataStreams.next_pair!(r)...)
+
+        P32, P63 = RandomDataStreams.PMF, RandomDataStreams.PMF63
+
+        cases = [
+            ("MRG32k3a, seed 12345 x6",   () -> MRG32k3a(),
+             z32, 6383324985553746743, 3871081252),
+            ("MRG32k3a, seed 1..6",       () -> MRG32k3a([1, 2, 3, 4, 5, 6]),
+             z32, 17608962676454277005, 2376766909),
+            ("MRG32k3a, top of moduli",   () -> MRG32k3a([P32.m1 - 1, 0, 1, P32.m2 - 1, 1, 0]),
+             z32, 1151014898845193120, 3582580783),
+            ("MRG63k3a, seed 12345 x6",   () -> MRG63k3a(),
+             z63, 212485652778388375, 1433135117478512863),
+            ("MRG63k3a, seed 123456789 x6 (the C default)", () -> MRG63k3a(fill(123456789, 6)),
+             z63, 17948122136114750705, 3784388861730332075),
+            ("MRG63k3a, seed 1..6",       () -> MRG63k3a([1, 2, 3, 4, 5, 6]),
+             z63, 8165515108107542832, 2852637435258056948),
+            ("MRG63k3a, top of moduli",   () -> MRG63k3a([P63.m1 - 1, 0, 1, P63.m2 - 1, 1, 0]),
+             z63, 444689602571418870, 7757865061190074490),
+        ]
+
+        for (name, mk, zfun, ref_digest, ref_last) in cases
+            @testset "$name" begin
+                h, z = digest(mk, zfun)
+                @test h == UInt64(ref_digest)
+                @test z == UInt64(ref_last)
+            end
+        end
+    end
+
+    @testset "MRG63k3a output properties" begin
+        rng = MRG63k3a()
+        u = [rand(rng) for _ in 1:100_000]
+        @test all(0.0 .< u .< 1.0)
+        @test abs(sum(u) / length(u) - 0.5) < 0.01
+
+        r = next_stream!(MRG63k3aGen())
+        v = [rand(r, 1:10) for _ in 1:10_000]
+        @test all(1 .<= v .<= 10)
+        @test count(==(1), v) > 500 && count(==(10), v) > 500
+
+        # 63 bits per step, against 32 for MRG32k3a: the top half of a word is
+        # not a near-deterministic function of the bottom half, and the whole
+        # range of a UInt32 is reached
+        w = [rand(r, UInt32) for _ in 1:10_000]
+        @test maximum(w) > 0xff00_0000 && minimum(w) < 0x00ff_ffff
+    end
+
+    @testset "MRG63k3a jump matrices" begin
+        # These are not L'Ecuyer's: he published jump matrices for MRG32k3a
+        # only. They are computed at precompilation, so what is checked here is
+        # the arithmetic that produced them.
+        P = RandomDataStreams.PMF63
+        I3 = [1 0 0; 0 1 0; 0 0 1]
+
+        # the backward step really is the inverse of the forward one
+        @test P.MatMatModM(P.A1p0, P.InvA1, P.m1) == I3
+        @test P.MatMatModM(P.A2p0, P.InvA2, P.m2) == I3
+
+        # the same formulas, applied to MRG32k3a's coefficients, reproduce the
+        # InvA1 and InvA2 that L'Ecuyer published -- an independent check on
+        # the derivation, since those constants are tabulated, not computed
+        let m = RandomDataStreams.PMF.m1, a12 = 1403580, a13n = 810728
+            iv = invmod(a13n, m)
+            @test [(a12 * iv) % m, 0, m - iv] == RandomDataStreams.PMF.InvA1[1, :]
+        end
+        let m = RandomDataStreams.PMF.m2, a21 = 527612, a23n = 1370589
+            iv = invmod(a23n, m)
+            @test [0, (a21 * iv) % m, m - iv] == RandomDataStreams.PMF.InvA2[1, :]
+        end
+
+        # the substream matrix squared 100 times is the stream matrix:
+        # (2^150)^(2^100) = 2^250
+        @test P.MatTwoPowModM(P.A1p150, Int64(100), P.m1) == P.A1p250
+        @test P.MatTwoPowModM(P.A2p150, Int64(100), P.m2) == P.A2p250
+
+        # and the jumps mean what the documentation says they mean
+        a = MRG63k3a(777); b = MRG63k3a(777)
+        next_substream!(a)
+        advance_state!(b, Int64(P.SUBSTREAM_EXPONENT), Int64(0))
+        @test get_state(a) == get_state(b)
+
+        gen = MRG63k3aGen(2024)
+        s1 = next_stream!(gen); s2 = next_stream!(gen)
+        c = copy(s1)
+        advance_state!(c, Int64(P.STREAM_EXPONENT), Int64(0))
+        @test get_state(c) == get_state(s2)
+    end
+
+    @testset "MRG63k3a keeps its state one step ahead" begin
+        # Vigna's third optimization: a draw returns the pair already in the
+        # state and computes the next one, so the internal vector is one step
+        # ahead of the position. Everything public has to hide that.
+        P = RandomDataStreams.PMF63
+        seed = [1, 2, 3, 4, 5, 6]
+
+        rng = MRG63k3a(seed)
+        @test get_state(rng) == seed                    # the seed comes back out
+        @test rng.Cg != seed                            # ... but is not what is stored
+        @test RandomDataStreams._unstep63(rng.Cg) == seed
+        @test RandomDataStreams._step63(RandomDataStreams._unstep63(rng.Cg)) == rng.Cg
+
+        # the stored vector is exactly the seed advanced one step, i.e. it
+        # already holds the first output in positions 3 and 6
+        first = rand(copy(rng))
+        @test first == RandomDataStreams.combine63(rng.Cg[3], rng.Cg[6]) * P.norm
+
+        # get_state tracks the position, one draw at a time
+        for k in 1:5
+            r = MRG63k3a(seed)
+            for _ in 1:k
+                rand(r)
+            end
+            direct = MRG63k3a(seed)
+            advance_state!(direct, Int64(0), Int64(k))
+            @test get_state(r) == get_state(direct)
+        end
+
+        # and the seed representation is what crosses every public boundary
+        @test occursin(string(seed[1]), sprint(show, MRG63k3a(seed)))
+        g = MRG63k3a(); Random.seed!(g, seed)
+        @test get_state(g) == seed
+        @test get_state(next_stream!(MRG63k3aGen(seed))) == seed
+    end
+
+    @testset "MRG63k3a streams & substreams" begin
+        gen = MRG63k3aGen()
+        rng1 = next_stream!(gen)
+        rng2 = next_stream!(gen)
+        # the first value of each stream, taken from a copy so the streams
+        # themselves stay untouched (`Ig` is internal here: the MRG63k3a state
+        # runs one step ahead of the position, so it is not a seed)
+        first1 = rand(copy(rng1))
+        first2 = rand(copy(rng2))
+
+        # successive streams are disjoint
+        a = [rand(rng1) for _ in 1:100]
+        b = [rand(rng2) for _ in 1:100]
+        @test Set(a) ∩ Set(b) == Set{Float64}()
+
+        # reset_stream! rewinds to the very beginning
+        rand(rng1); rand(rng1)
+        reset_stream!(rng1)
+        @test rand(rng1) == first1
+
+        # reset_substream!: no next_substream! yet -> back to the stream start
+        reset_substream!(rng2)
+        @test rand(rng2) == first2
+
+        # next_substream! opens a new, different block; reset_substream! rewinds it
+        v1 = rand(rng2)
+        next_substream!(rng2)
+        w1 = rand(rng2)
+        reset_substream!(rng2)
+        @test rand(rng2) == w1          # start of the new substream
+        @test v1 != w1
+    end
+
+    @testset "MRG63k3a state handling" begin
+        rng = next_stream!(MRG63k3aGen())
+        state = get_state(rng)
+        xs = [rand(rng) for _ in 1:5]
+
+        clone = MRG63k3a(state, state, state)
+        @test rand(clone) == xs[1]
+
+        st = get_state(rng)
+        st[1] += 1                      # get_state must return an independent copy
+        @test get_state(rng) != st
+
+        c = copy(rng)
+        rand(c); rand(c)
+        @test rand(rng) != rand(c)      # copies evolve independently
+
+        @test_throws ArgumentError set_state!(MRG63k3a(), [0, 0, 0, 1, 1, 1])
+        @test_throws ArgumentError srand!(MRG63k3a(), [0, 0, 0, 1, 1, 1])
+    end
+
+    @testset "MRG63k3a advance_state!" begin
+        ref = next_stream!(MRG63k3aGen())
+        vals = [rand(ref) for _ in 1:4]
+
+        rng = MRG63k3a(fill(12345, 6))
+        advance_state!(rng, Int64(2), Int64(-1))     # skip n = 2^2 - 1 = 3 values
+        @test rand(rng) == vals[4]
+
+        # backward jump: after consuming vals[4] the position is 4; n = -2^2 = -4
+        advance_state!(rng, Int64(-2), Int64(0))
+        @test rand(rng) == vals[1]
+
+        # e = 0, c = k: plain forward jump
+        rng2 = MRG63k3a(fill(12345, 6))
+        advance_state!(rng2, Int64(0), Int64(2))
+        @test rand(rng2) == vals[3]
+
+        # a jump far beyond anything reachable by stepping, and back
+        rng3 = MRG63k3a(4242)
+        s0 = get_state(rng3)
+        advance_state!(rng3, Int64(300), Int64(11))
+        @test get_state(rng3) != s0
+        advance_state!(rng3, Int64(-300), Int64(-11))
+        @test get_state(rng3) == s0
+    end
+
+    @testset "MRG63k3aGen" begin
+        gen = MRG63k3aGen()
+        @test gen.seed == RandomDataStreams.DEFAULT_SEED63
+        @test get_state(gen) == RandomDataStreams.DEFAULT_SEED63
+
+        custom = MRG63k3aGen([7, 7, 7, 8, 8, 8])
+        @test get_state(custom) == [7, 7, 7, 8, 8, 8]
+        @test_throws AssertionError MRG63k3aGen([0, 0, 0, 1, 1, 1])
+        @test_throws ArgumentError srand!(MRG63k3aGen(), [0, 0, 0, 1, 1, 1])
+
+        g2 = MRG63k3aGen([1, 2, 3, 4, 5, 6])
+        r = next_stream!(g2)
+        @test get_state(g2) != [1, 2, 3, 4, 5, 6]   # internal seed advanced
+
+        # the two members of the family are different generators, and neither
+        # is silently substituted for the other
+        @test rand(next_stream!(MRG63k3aGen(99))) != rand(next_stream!(MRG32k3aGen(99)))
+    end
+
     @testset "Xoshiro256p reference values" begin
         seed = UInt64[0x01, 0x02, 0x03, 0x04]
         x = Xoshiro256p(seed)
@@ -693,7 +1062,7 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
     @testset "uniform constructor and generator-object API" begin
         # The package promises one interface across every generator. That claim
         # is only as good as its weakest family, so it is asserted here for all
-        # sixteen, rather than for the handful the interface testset samples.
+        # seventeen, rather than for the handful the interface testset samples.
         #
         # The seeding rule under test: a value in the family's own
         # representation (its seed vector, or a UInt128 for PCG) IS the state or
@@ -703,6 +1072,7 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         R = RandomDataStreams
         families = [
             ("MRG32k3a",        MRG32k3a,          MRG32k3aGen,        [1, 2, 3, 4, 5, 6]),
+            ("MRG63k3a",        MRG63k3a,          MRG63k3aGen,        [1, 2, 3, 4, 5, 6]),
             ("Xoroshiro128p",   R.Xoroshiro128p,   R.Xoroshiro128pGen,  UInt64[1, 2]),
             ("Xoroshiro128ss",  R.Xoroshiro128ss,  R.Xoroshiro128ssGen, UInt64[1, 2]),
             ("Xoroshiro128pp",  R.Xoroshiro128pp,  R.Xoroshiro128ppGen, UInt64[1, 2]),
@@ -719,7 +1089,7 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
             ("Threefry4x32-20", Threefry4x32RNG,   Threefry4x32Gen,     UInt32[1, 2, 3, 4]),
             ("Threefry4x64-20", Threefry4x64RNG,   Threefry4x64Gen,     UInt64[1, 2, 3, 4]),
         ]
-        @test length(families) == 16
+        @test length(families) == 17
 
         for (name, T, G, seed) in families
             @testset "$name" begin
@@ -772,6 +1142,7 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         # same srand! semantics.
         makers = [
             ("MRG32k3a",      () -> MRG32k3a([42, 1, 2, 3, 4, 5]), [7, 7, 7, 8, 8, 8]),
+            ("MRG63k3a",      () -> MRG63k3a([42, 1, 2, 3, 4, 5]), [7, 7, 7, 8, 8, 8]),
             ("Xoshiro256pp",  () -> Xoshiro256pp(fill(UInt64(42), 4)), UInt64[1, 2, 3, 4]),
             ("Xoroshiro128ss",() -> Xoroshiro128ss(fill(UInt64(42), 2)), UInt64[5, 6]),
             ("Philox4x32-10", () -> next_stream!(PhiloxGen()), UInt32[3, 4]),
@@ -855,16 +1226,25 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         end
 
         # MRG32k3a defined its wide unsigned draws on `::Type` only, so the
-        # Sampler machinery behind rand! had no method and this threw.
-        a, b = MRG32k3a(), MRG32k3a()
-        v = Vector{UInt32}(undef, 5)
-        rand!(a, v)
-        @test v == [rand(b, UInt32) for _ in 1:5]
+        # Sampler machinery behind rand! had no method and this threw. Both
+        # members of the MRG family assemble words the same way, so both are
+        # checked.
+        for M in (MRG32k3a, MRG63k3a)
+            a, b = M(), M()
+            v = Vector{UInt32}(undef, 5)
+            rand!(a, v)
+            @test v == [rand(b, UInt32) for _ in 1:5]
 
-        a, b = MRG32k3a(), MRG32k3a()
-        w = Vector{UInt128}(undef, 3)
-        rand!(a, w)
-        @test w == [rand(b, UInt128) for _ in 1:3]
+            a, b = M(), M()
+            w = Vector{UInt128}(undef, 3)
+            rand!(a, w)
+            @test w == [rand(b, UInt128) for _ in 1:3]
+
+            a, b = M(), M()
+            u = Vector{UInt64}(undef, 4)
+            rand!(a, u)
+            @test u == [rand(b, UInt64) for _ in 1:4]
+        end
     end
 
 
@@ -907,6 +1287,10 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         @test occursin("MRG32k3a", String(take!(io)))
         show(io, MRG32k3aGen())
         @test occursin("MRG32k3a", String(take!(io)))
+        show(io, MRG63k3a())
+        @test occursin("MRG63k3a", String(take!(io)))
+        show(io, MRG63k3aGen())
+        @test occursin("MRG63k3a", String(take!(io)))
         show(io, Xoshiro256p(UInt64[1, 2, 3, 4]))
         @test occursin("Xoshiro256plus", String(take!(io)))
         show(io, Xoshiro256plusGen(UInt64[1, 2, 3, 4]))
@@ -1097,6 +1481,7 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         # every operation below must work for every RandomDataStreams generator.
         mk = [
             () -> MRG32k3a([42, 1, 2, 3, 4, 5]),
+            () -> MRG63k3a([42, 1, 2, 3, 4, 5]),
             () -> Xoshiro256pp(fill(UInt64(42), 4)),
             () -> Xoroshiro128ss(fill(UInt64(42), 2)),
             () -> Xoshiro512p(fill(UInt64(42), 8)),
@@ -1127,6 +1512,7 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         # seed! reproducibility: same seed -> identical sequence
         for (mka, seed) in (
             (() -> MRG32k3a(), 12345),
+            (() -> MRG63k3a(), 12345),
             (() -> Xoshiro256pp(), 6789),      # the state is replaced by seed! below
             (() -> PhiloxRNG(), 6789),
         )
@@ -1141,6 +1527,9 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
         r = MRG32k3a()
         Random.seed!(r, [7, 7, 7, 8, 8, 8]); @test r.Cg == [7, 7, 7, 8, 8, 8]
         @test_throws ArgumentError Random.seed!(r, [0, 0, 0, 1, 1, 1])
+        r63 = MRG63k3a()
+        Random.seed!(r63, [7, 7, 7, 8, 8, 8]); @test get_state(r63) == [7, 7, 7, 8, 8, 8]
+        @test_throws ArgumentError Random.seed!(r63, [0, 0, 0, 1, 1, 1])
         x = Xoshiro256p()
         Random.seed!(x, UInt64[1, 2, 3, 4]); @test get_state(x) == UInt64[1, 2, 3, 4]
         @test_throws ArgumentError Random.seed!(x, fill(UInt64(0), 4))

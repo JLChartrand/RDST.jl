@@ -12,11 +12,12 @@ RandomDataStreams (Random Data Streams) provides random number generators (RNGs)
 This is a key requirement for stochastic simulation, parallel Monte Carlo, and
 reproducible variance-reduction techniques such as common random numbers.
 
-Four generator families are provided:
+Four generator families are provided, the first of them in two sizes:
 
 | Family | Variants | Period | Native output | Streams / substreams |
 |-------------|---------------|------|----------------------|----------------|
-| **MRG32k3a** | `MRG32k3a` | ≈ 2^191 | `Float64` | matrix jumps (L'Ecuyer) |
+| **MRG32k3a** | `MRG32k3a` | ≈ 2^191 | `Float64` (32-bit step) | matrix jumps (L'Ecuyer) |
+| **MRG63k3a** | `MRG63k3a` | ≈ 2^377 | `Float64` (63-bit step) | matrix jumps, 2^250 / 2^150 |
 | **xoshiro/xoroshiro** | `Xoroshiro128p/ss/pp`, `Xoshiro256p/ss/pp`, `Xoshiro512p/ss/pp` | 2^128 – 2^512 | `UInt64` | Vigna's jump polynomials |
 | **PCG** | `PCG64`, `PCG64DXSM` | 2^128 | `UInt64` | closed-form LCG jumps (O'Neill) |
 | **Philox** | `PhiloxRNG` (4x32-10), `Philox4x64RNG` (4x64-10) | 2^130 | `UInt32` / `UInt64` | distinct keys / counter jumps (Salmon et al.) |
@@ -75,6 +76,23 @@ rand(rng, Int32)
 rand(rng, 1:10)              # random number in 1:10
 ```
 
+### MRG63k3a
+
+Same generator family in 64-bit arithmetic: L'Ecuyer's (1999) two moduli just
+under 2^63 instead of 2^32, period ≈ 2^377, and just under 63 random bits per
+step instead of 32. Use it when the draws are integers — a `UInt64` costs two
+steps here against four for MRG32k3a — or when a longer period matters. The
+interface is the same, and so is the seed vector.
+
+```julia
+using RandomDataStreams
+
+gen = MRG63k3aGen()          # streams 2^250 apart, substreams 2^150
+rng = next_stream!(gen)
+
+rand(rng)                    # Float64 in (0, 1)
+rand(rng, UInt64)            # two steps, two 32-bit chunks
+```
 
 ### Philox
 
@@ -199,14 +217,14 @@ Full documentation lives in [`docs/`](docs/) and as a PDF in
 - [Validation](docs/src/validation.md)
 - [Generator comparison](docs/src/comparison.md)
 
-A runnable tour — the stream model, all four generator families, and a common
-random numbers experiment — is in
+A runnable tour — the stream model, every generator the package ships, and a
+common random numbers experiment — is in
 [`notebooks/streams_tour.ipynb`](notebooks/streams_tour.ipynb).
 
 ## References
 
-### MRG32k3a & Stream API
-- L'Ecuyer, P. (1999). *Good Parameters and Implementations for Combined Multiple Recursive Random Number Generators*. Operations Research, 47(1), 159–164.
+### MRG32k3a, MRG63k3a & Stream API
+- L'Ecuyer, P. (1999). *Good Parameters and Implementations for Combined Multiple Recursive Random Number Generators*. Operations Research, 47(1), 159–164. (MRG32k3a is the third entry of its Table II, MRG63k3a the fourth.)
 - L'Ecuyer, P., Simard, R., Chen, E. J., & Kelton, W. D. (2002). *An Object-Oriented Random-Number Package with Many Long Streams and Substreams*. Operations Research, 50(6), 1073–1075.
 
 ### Multiple streams in parallel environments

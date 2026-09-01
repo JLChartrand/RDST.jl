@@ -98,6 +98,7 @@ function main()
 
     generators = [
         ("MRG32k3a",        () -> MRG32k3a()),
+        ("MRG63k3a",        () -> MRG63k3a()),
         ("Xoroshiro128p",   () -> Xoroshiro128p(seed_words(2))),
         ("Xoroshiro128ss",  () -> Xoroshiro128ss(seed_words(2))),
         ("Xoroshiro128pp",  () -> Xoroshiro128pp(seed_words(2))),

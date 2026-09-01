@@ -77,6 +77,43 @@ function Random.seed!(rng::MRG32k3a, seed::AbstractVector{<:Integer})
     return rng
 end
 
+"Fold an integer seed into the valid MRG63k3a seed space."
+function _mrg63_seed_words(seed::UInt64)
+    w = _splitmix_words(seed, 6)
+    v = Vector{Int}(undef, 6)
+    for i in 1:3
+        v[i] = Int(w[i] % PMF63.m1)
+    end
+    for i in 4:6
+        v[i] = Int(w[i] % PMF63.m2)
+    end
+    all(iszero, view(v, 1:3)) && (v[1] = 1)
+    all(iszero, view(v, 4:6)) && (v[4] = 1)
+    return v
+end
+
+"""
+    Random.seed!(rng::MRG63k3a, seed::Integer) -> rng
+    Random.seed!(rng::MRG63k3a, seed::AbstractVector{<:Integer}) -> rng
+
+Re-seed the generator with all three states equal. Integer seeds are expanded
+through splitmix64 and folded into the valid MRG63k3a seed space; vector seeds
+must satisfy `checkseed63`.
+"""
+function Random.seed!(rng::MRG63k3a, seed::Integer)
+    # `_step63`: the MRG63k3a state is kept one step ahead of the position,
+    # so a seed is converted on the way in. See src/mrg63k3a/mrg63k3a.jl.
+    rng.Cg[:] = rng.Bg[:] = rng.Ig[:] = _step63(_mrg63_seed_words(UInt64(seed)))
+    return rng
+end
+
+function Random.seed!(rng::MRG63k3a, seed::AbstractVector{<:Integer})
+    s = Int.(collect(seed))
+    checkseed63(s) || throw(ArgumentError("invalid MRG63k3a seed"))
+    rng.Cg[:] = rng.Bg[:] = rng.Ig[:] = _step63(s)
+    return rng
+end
+
 """
     Random.seed!(rng::CBRNG, seed::Integer) -> rng
     Random.seed!(rng::CBRNG, seed::AbstractVector{<:Integer}) -> rng

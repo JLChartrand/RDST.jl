@@ -10,7 +10,7 @@ last section.
 
 ## In the test suite: SmallCrush
 
-A subset of the TestU01 batteries, **SmallCrush**, is automatically executed on all supported generators (`MRG32k3a`, `Xoshiro256+`, `PCG64`, `PCG64DXSM`, `Philox4x32-10`, `Philox4x64-10`, `Threefry4x64-20` and `Threefry4x32-20`) during the standard test suite. You can trigger this locally by running:
+A subset of the TestU01 batteries, **SmallCrush**, is automatically executed on all supported generators (`MRG32k3a`, `MRG63k3a`, `Xoshiro256+`, `PCG64`, `PCG64DXSM`, `Philox4x32-10`, `Philox4x64-10`, `Threefry4x64-20` and `Threefry4x32-20`) during the standard test suite. You can trigger this locally by running:
 
 ```julia
 using Pkg
@@ -25,7 +25,7 @@ also important to test the dependence between those streams [...] one can
 construct sequences that take a few values from each stream for a certain
 number of streams, in a round-robin fashion" — the test suite also runs
 SmallCrush on a sequence built by interleaving 64 streams, one value at a time,
-for each of the six generators. For a counter-based generator this is what
+for each of the nine generators. For a counter-based generator this is what
 exercises the key schedule: a schedule handing out structurally related keys
 shows up here and not in a battery run on a single stream.
 
@@ -54,8 +54,9 @@ builds a machine integer. Where the integer *is* the native output — Philox
 4x32, Threefry 4x32 — that is the same stream. Where it is a construction, it
 needs testing for itself, and `test/test_bits.jl` runs SmallCrush on the bit
 stream of: `MRG32k3a` in `UInt32` and in `UInt64` (16-bit chunks of a
-non-power-of-two modulus), the 64-bit counter-based families in `UInt32` (the
-low half of a cipher word), `PCG64` and `PCG64DXSM` in `UInt32` (the low bits
+non-power-of-two modulus), `MRG63k3a` in the same two types (32-bit chunks of
+the same construction, with a modulus just under 2^63), the 64-bit
+counter-based families in `UInt32` (the low half of a cipher word), `PCG64` and `PCG64DXSM` in `UInt32` (the low bits
 of a permuted output -- DXSM ends in a multiplication, whose low bits depend on
 fewer input bits than its high ones), and `Xoshiro256+` in `UInt32` (the low bits of an
 additive scrambler).
@@ -162,23 +163,6 @@ The unit stops with `SIGINT` and a six-hour stop timeout, so `systemctl --user
 stop` lets the driver wait for its children rather than killing them, and
 `Restart=on-failure` brings back a driver that died — it resumes from
 `summary.tsv` like any other invocation.
-
-**Every result names the code that produced it.** `summary.tsv` records the
-package version, the commit of `HEAD` and whether the working tree was clean,
-alongside the Julia version, the CPU and — for the interleaved suite — the
-number of streams and values per stream. Each battery log repeats it in its
-header. A campaign started from a dirty tree prints a warning before it begins,
-because a run measured in weeks cannot be repeated to find out afterwards which
-code produced it. The same line appears at the top of the throughput benchmark's
-report.
-
-**Do not benchmark and validate at the same time.** The throughput figures in
-the implementation notes are minima over samples on an unloaded machine; a host
-running six BigCrush processes will produce numbers that measure the scheduler.
-Run `scripts/benchmarks/throughput.jl` first, pinned, then start the campaign.
-On a hybrid CPU (Intel 12th generation and later) pin the benchmark to a
-performance core with `taskset`; the batteries can use any core, since their
-results do not depend on how fast they were produced.
 
 ### What still needs BigCrush
 
