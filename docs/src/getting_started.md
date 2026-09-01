@@ -105,7 +105,7 @@ flags rather than cryptography.
 
 - `Float64` (native path), `Float32`, `Float16`
 - `UInt64`
-- Ranges: `rand(rng, r::UnitRange{Int64})`
+- Ranges: `rand(rng, 1:10)` works through the standard `Random` machinery
 
 ## Reproducibility
 

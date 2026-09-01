@@ -57,6 +57,24 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `notebooks/streams_tour.ipynb`, which now also shows the two MRG word sizes
   side by side.
 
+### Fixed
+
+- **Ranges on the xoshiro and PCG families were sampled by folding.**
+  `rand(rng::LinRNG, ::UnitRange{Int64})` and its `PCGRNG` twin reduced one
+  `UInt64` draw with `%`, which biases the low values of a range whose length
+  does not divide `2^64` by about `n/2^64`, and which threw `DivideError` on an
+  empty range where every other family — and the standard library — throws
+  `ArgumentError`. Both methods are gone; ranges now go through `Random`'s
+  sampler, which rejects rather than folds, for all seventeen variants. The
+  uniform-interface matrix checks the bounds and the empty-range error.
+
+- **`show` was multi-line on two arguments.** `show(io, x)` is what string
+  interpolation, `@show`, container display and error messages call, so
+  `"$rng"` spread one generator over four lines and a `Vector` of them was
+  unreadable. The two-argument method is now a one-line summary; the three
+  anchors moved to `show(io, ::MIME"text/plain", x)`, so REPL and notebook
+  display are unchanged. All ten types, streams and generator objects alike.
+
 ## [0.2.0]
 
 Two new generator families, and one breaking change to seeding.

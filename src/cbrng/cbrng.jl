@@ -370,7 +370,15 @@ function advance_state!(rng::CBRNG{B,W,N,K}, e::Integer, c::Integer) where {B,W,
     return rng
 end
 
+# Two-argument `show` is what interpolation, `@show` and container display call,
+# so it stays on one line; the full dump belongs to `text/plain`.
 function show(io::IO, rng::CBRNG{B,W,N,K}) where {B,W,N,K}
+    print(io, _variant_name(typeof(rng)), "(key = ", collect(rng.key),
+          ", ctr = 0x", string(rng.ctr, base = 16, pad = 32),
+          ", idx = ", rng.idx, ")")
+end
+
+function show(io::IO, ::MIME"text/plain", rng::CBRNG{B,W,N,K}) where {B,W,N,K}
     print(io, "Full state of ", _variant_name(typeof(rng)), " generator:\n",
           "key = ", collect(rng.key), "\n",
           "ctr = 0x", string(rng.ctr, base = 16, pad = 32), "\n",
@@ -476,7 +484,10 @@ Restores the seed of the next stream, as returned by `get_state(gen)`.
 """
 set_state!(gen::CBGen, seed) = srand!(gen, seed)
 
-function show(io::IO, gen::CBGen{B,W,N,K}) where {B,W,N,K}
+show(io::IO, gen::CBGen{B,W,N,K}) where {B,W,N,K} =
+    print(io, _variant_name(CBRNG{B,W,N,K}), "Gen(next = ", collect(gen.nextSeed), ")")
+
+function show(io::IO, ::MIME"text/plain", gen::CBGen{B,W,N,K}) where {B,W,N,K}
     print(io, "Seed for next ", _variant_name(CBRNG{B,W,N,K}), " generator:\n",
           collect(gen.nextSeed))
 end

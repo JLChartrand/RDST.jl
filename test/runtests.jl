@@ -1119,7 +1119,12 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
                 @test get_state(next_stream!(g)) == firststream
                 srand!(g, seed)
                 @test get_state(next_stream!(g)) == firststream
+                # two-argument `show` is what interpolation and container
+                # display call, so it has to stay on one line; the REPL's
+                # `text/plain` rendering is the one that may spread out
                 @test occursin(r"\S", sprint(show, g))
+                @test !occursin('\n', sprint(show, g))
+                @test occursin('\n', sprint(show, MIME"text/plain"(), g))
 
                 # the portable navigation contract, returning the object each time
                 x = next_stream!(G(seed))
@@ -1131,6 +1136,14 @@ statewords(::Type{RandomDataStreams.LinRNG{N,S}}) where {N,S} = N
                 @test set_state!(x, get_state(x)) === x
                 @test copy(x) !== x
                 @test occursin(r"\S", sprint(show, x))
+                @test !occursin('\n', sprint(show, x))
+                @test occursin('\n', sprint(show, MIME"text/plain"(), x))
+
+                # ranges go through `Random`'s sampler for every family: in
+                # bounds, and the same error as the standard library on an
+                # empty range rather than a `DivideError` from folding with `%`
+                @test all(3 .<= [rand(x, 3:9) for _ in 1:200] .<= 9)
+                @test_throws ArgumentError rand(x, 1:0)
             end
         end
     end

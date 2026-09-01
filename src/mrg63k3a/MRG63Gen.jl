@@ -15,7 +15,10 @@ end
 MRG63k3aGen(seed::Integer) = MRG63k3aGen(_mrg63_seed_words(UInt64(seed)))
 
 #show imported in RandomDataStreams.jl in src
-function show(io::IO, rng_gen::MRG63k3aGen)
+show(io::IO, rng_gen::MRG63k3aGen) =
+    print(io, "MRG63k3aGen(next = ", rng_gen.seed, ")")
+
+function show(io::IO, ::MIME"text/plain", rng_gen::MRG63k3aGen)
     print(io, "Seed for next MRG63k3a generator:\n$(rng_gen.seed)")
 end
 

@@ -391,12 +391,20 @@ function _variant_name(::Type{<:LinRNG{8,:plus}});      "Xoshiro512plus";     en
 function _variant_name(::Type{<:LinRNG{8,:starstar}});  "Xoshiro512starstar"; end
 function _variant_name(::Type{<:LinRNG{8,:plusplus}});  "Xoshiro512plusplus"; end
 
-function show(io::IO, rng::LinRNG{N,S}) where {N,S}
+# Two-argument `show` is what interpolation, `@show` and container display call,
+# so it stays on one line; the full dump belongs to `text/plain`.
+show(io::IO, rng::LinRNG{N,S}) where {N,S} =
+    print(io, _variant_name(typeof(rng)), "(Cg = ", collect(rng.Cg), ")")
+
+function show(io::IO, ::MIME"text/plain", rng::LinRNG{N,S}) where {N,S}
     print(io, "Full state of ", _variant_name(typeof(rng)), " generator:\n",
           "Cg = $(collect(rng.Cg))\nBg = $(collect(rng.Bg))\nIg = $(collect(rng.Ig))")
 end
 
-function show(io::IO, gen::LinGen{N,S}) where {N,S}
+show(io::IO, gen::LinGen{N,S}) where {N,S} =
+    print(io, _variant_name(LinRNG{N,S}), "Gen(next = ", gen.nextSeed, ")")
+
+function show(io::IO, ::MIME"text/plain", gen::LinGen{N,S}) where {N,S}
     print(io, "Seed for next ", _variant_name(LinRNG{N,S}), " generator:\n$(gen.nextSeed)")
 end
 

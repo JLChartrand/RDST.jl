@@ -45,7 +45,7 @@ value shaped like the state *is* the state.
 | `reset_stream!(rng) -> rng` | rewind to the start of the current stream |
 | `advance_state!(rng, e, c) -> rng` | move by `2^e + c` draws; negative moves backwards |
 | `get_state(rng)` / `set_state!(rng, s) -> rng` | save and restore the position only |
-| `copy(rng)`, `show(io, rng)` | independent copy, full state display |
+| `copy(rng)`, `show(io, rng)` | independent copy; one-line summary, or the three anchors when displayed at the REPL |
 | the full `Random` API | `rand`, `rand!`, `randn`, `shuffle`, ranges, every integer and float type |
 
 `get_state` returns a family-specific representation. Treat it as opaque and
@@ -59,7 +59,7 @@ only ever hand it back to `set_state!`.
 | `next_stream!(gen, n) -> Vector` | the next `n` of them; the thread-safe way to obtain streams for parallel work |
 | `srand!(gen, seed) -> gen` | reset the seed the next `next_stream!` will use |
 | `get_state(gen)` / `set_state!(gen, s) -> gen` | save and restore that seed |
-| `show(io, gen)` | display it |
+| `show(io, gen)` | display it, on one line or in full as above |
 
 ### What is *not* common
 
@@ -221,8 +221,9 @@ matrices are computed at precompilation rather than tabulated.
 Uniform in [0, 1), built from a full 64-bit draw.
 
 **`rand(rng::Xoshiro256p, T)`**
-Supported `T`: `Float64`, `Float32`, `Float16`, `UInt64`, and
-`UnitRange{Int64}` (uniform, unbiased modulo sampling).
+Supported `T`: `Float64`, `Float32`, `Float16`, and the integer and `Bool`
+types of the `Random` API. Ranges (`rand(rng, 1:10)`) go through the standard
+`Random` sampler, which rejects rather than folding and is therefore unbiased.
 
 **`srand!(rng, seed::Vector{UInt64}) -> rng`**
 Re-seed an existing generator (first 4 words are used).

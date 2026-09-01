@@ -109,7 +109,12 @@ function next_substream!(rng::MRG32k3a)::MRG32k3a
     return rng
 end
 #show imported in RandomDataStreams.jl in src
-function show(io::IO,rng::MRG32k3a)
+# Two-argument `show` is what interpolation, `@show` and container display call,
+# so it stays on one line; the full three-anchor dump belongs to the REPL's
+# `text/plain` rendering.
+show(io::IO, rng::MRG32k3a) = print(io, "MRG32k3a(Cg = ", rng.Cg, ")")
+
+function show(io::IO, ::MIME"text/plain", rng::MRG32k3a)
     print(io,"Full state of MRG32k3a generator:\nCg = $(rng.Cg)\nBg = $(rng.Bg)\nIg = $(rng.Ig)")
 end
 

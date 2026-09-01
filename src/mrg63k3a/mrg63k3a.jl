@@ -175,8 +175,12 @@ function next_substream!(rng::MRG63k3a)::MRG63k3a
     return rng
 end
 #show imported in RandomDataStreams.jl in src
-function show(io::IO, rng::MRG63k3a)
-    # in the seed representation, the one `get_state` and the constructors use
+# One line for interpolation and container display; the three anchors are the
+# REPL's business. Both print the seed representation, the one `get_state` and
+# the constructors use.
+show(io::IO, rng::MRG63k3a) = print(io, "MRG63k3a(Cg = ", _unstep63(rng.Cg), ")")
+
+function show(io::IO, ::MIME"text/plain", rng::MRG63k3a)
     print(io, "Full state of MRG63k3a generator:\nCg = $(_unstep63(rng.Cg))" *
               "\nBg = $(_unstep63(rng.Bg))\nIg = $(_unstep63(rng.Ig))")
 end

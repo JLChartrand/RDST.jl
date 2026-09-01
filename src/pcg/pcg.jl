@@ -279,13 +279,9 @@ Generates a `Float16` from a PCG generator.
 """
 rand(rng::PCGRNG, ::Type{Float16}) = Float16(rand(rng))
 
-"""
-Generates an `Int64` uniformly distributed in the given range.
-"""
-function rand(rng::PCGRNG, r::UnitRange{Int64})
-    n = UInt64(length(r))
-    return r.start + reinterpret(Int64, rand(rng, UInt64) % n)
-end
+# Ranges are left to `Random`: the sampler it builds from the `SamplerType`
+# methods below rejects instead of folding with `%`, so it is unbiased and it
+# raises the same `ArgumentError` as every other generator on an empty range.
 
 rand(rng::PCGRNG, ::Random.SamplerType{Bool}) = (next(rng) >> 63) == 1
 
@@ -363,12 +359,20 @@ _variant_name(::Type{<:PCGRNG{:dxsm}})   = "PCG64DXSM"
 
 _hex128(x::UInt128) = "0x" * string(x, base = 16, pad = 32)
 
-function show(io::IO, rng::PCGRNG)
+# Two-argument `show` is what interpolation, `@show` and container display call,
+# so it stays on one line; the full dump belongs to `text/plain`.
+show(io::IO, rng::PCGRNG) =
+    print(io, _variant_name(typeof(rng)), "(Cg = ", _hex128(rng.Cg), ")")
+
+function show(io::IO, ::MIME"text/plain", rng::PCGRNG)
     print(io, "Full state of ", _variant_name(typeof(rng)), " generator:\n",
           "Cg = $(_hex128(rng.Cg))\nBg = $(_hex128(rng.Bg))\nIg = $(_hex128(rng.Ig))")
 end
 
 show(io::IO, gen::PCGGen{V}) where {V} =
+    print(io, _variant_name(PCGRNG{V}), "Gen(next = ", _hex128(gen.nextSeed), ")")
+
+show(io::IO, ::MIME"text/plain", gen::PCGGen{V}) where {V} =
     print(io, "Seed for next ", _variant_name(PCGRNG{V}), " generator:\n",
           _hex128(gen.nextSeed))
 
