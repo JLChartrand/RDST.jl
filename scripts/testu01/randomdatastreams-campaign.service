@@ -4,6 +4,12 @@
 # neither survives a reboot, and neither restarts a driver that died. A BigCrush
 # sweep runs for days or weeks, so it wants a supervisor.
 #
+# This unit is the best of the supervisors, but it needs `enable-linger`,
+# which on a shared machine only an administrator can grant. Where that is
+# refused, `scripts/run-campaign.sh --supervisor=tmux --watchdog` gets back
+# logout-, reboot- and crash-survival through a user crontab entry instead. See
+# docs/src/validation.md.
+#
 # Install (once, on the machine that will run it):
 #
 #     loginctl enable-linger $USER            # keep user services after logout

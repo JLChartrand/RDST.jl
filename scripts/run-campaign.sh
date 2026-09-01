@@ -13,10 +13,26 @@
 #     ./scripts/run-campaign.sh run     --battery=crush   # both of the above
 #     ./scripts/run-campaign.sh status  --battery=crush
 #     ./scripts/run-campaign.sh stop    --battery=crush
+#     ./scripts/run-campaign.sh ensure  --battery=crush   # start only if stopped
 #     ./scripts/run-campaign.sh collect --battery=crush
 #
 # There is no default battery, here or in campaign.jl. A stray argument must not
 # be able to start a two-week BigCrush sweep.
+#
+# Supervisors. A systemd user unit is the best of them -- it restarts a driver
+# that died and comes back after a reboot -- but it only outlives your login if
+# `loginctl enable-linger` has been run for your account, which on a shared
+# machine is the administrator's call. Where that is refused, --supervisor=tmux
+# runs the campaign in a detached session instead, and --watchdog recovers what
+# systemd was giving you:
+#
+#     ./scripts/run-campaign.sh run --battery=crush --supervisor=tmux --watchdog
+#
+#   --supervisor=auto     systemd if linger is on or can be turned on, else
+#                         tmux (the default)
+#   --watchdog            a user crontab entry that restarts the campaign if it
+#                         is not running, and at reboot. Needs no privileges,
+#                         and `stop` removes it again.
 
 set -euo pipefail
 
@@ -29,6 +45,15 @@ OUT=""
 JOBS=""
 SKIP_BENCHMARK=0
 ALLOW_DIRTY=0
+SUPERVISOR=""
+WATCHDOG=0
+
+# tmux keeps its socket under /run/user/$UID by default, and that directory is
+# created for a login session and removed when the last one ends -- precisely
+# the case this script exists to handle. Put the socket somewhere that survives
+# instead, so a session started from cron, from a login shell or from a later
+# reconnection is always the same session.
+export TMUX_TMPDIR="${TMUX_TMPDIR:-$HOME/.cache/randomdatastreams-tmux}"
 
 # ------------------------------------------------------------------ utilities
 
@@ -37,12 +62,18 @@ info() { printf '    %s\n' "$*"; }
 die()  { printf '\nerror: %s\n' "$*" >&2; exit 1; }
 
 usage() {
-    sed -n '3,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    # the header block, however long it grows
+    sed -n '3,/^$/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit "${1:-1}"
 }
 
 unit_name() { echo "randomdatastreams-$BATTERY"; }
 unit_file() { echo "$HOME/.config/systemd/user/$(unit_name).service"; }
+session()   { echo "randomdatastreams-$BATTERY"; }
+sup_file()  { echo "$OUT/supervisor"; }
+launcher()  { echo "$OUT/campaign-command.sh"; }
+runlog()    { echo "$OUT/campaign.log"; }
+cron_tag()  { echo "# randomdatastreams-campaign $BATTERY"; }
 
 parse_args() {
     for a in "$@"; do
@@ -52,6 +83,8 @@ parse_args() {
             --jobs=*)         JOBS="${a#*=}" ;;
             --skip-benchmark) SKIP_BENCHMARK=1 ;;
             --allow-dirty)    ALLOW_DIRTY=1 ;;
+            --supervisor=*)   SUPERVISOR="${a#*=}" ;;
+            --watchdog)       WATCHDOG=1 ;;
             -h|--help)        usage 0 ;;
             *)                die "unknown option: $a" ;;
         esac
@@ -62,6 +95,11 @@ parse_args() {
         *)  die "unknown battery: $BATTERY" ;;
     esac
     OUT="${OUT:-$HOME/$BATTERY-results}"
+
+    case "$SUPERVISOR" in
+        ""|auto|systemd|tmux) ;;
+        *) die "unknown supervisor: $SUPERVISOR (auto, systemd, tmux)" ;;
+    esac
 }
 
 # ------------------------------------------------------------------- checks
@@ -107,10 +145,83 @@ check_environment() {
         info "tree:   clean"
     fi
 
-    systemctl --user show-environment >/dev/null 2>&1 \
-        || die "systemctl --user is not available in this session. Log in over
-       SSH with a proper user session, or run campaign.jl under tmux instead
-       (it will not survive a reboot)."
+    resolve_supervisor
+}
+
+# ------------------------------------------------------------- the supervisor
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+systemd_usable() { systemctl --user show-environment >/dev/null 2>&1; }
+linger_on()      { [ "$(loginctl show-user "$USER" -p Linger --value 2>/dev/null)" = "yes" ]; }
+
+# Whether logging out kills what you leave behind. With KillUserProcesses=yes a
+# detached tmux dies at logout exactly as an unlingered service does, so tmux is
+# not a workaround there and the campaign needs linger after all -- worth
+# knowing before a two-week sweep, not after.
+kill_user_processes() {
+    local v
+    v=$(busctl get-property org.freedesktop.login1 /org/freedesktop/login1 \
+            org.freedesktop.login1.Manager KillUserProcesses 2>/dev/null) || return 2
+    case "$v" in *true) return 0 ;; *false) return 1 ;; *) return 2 ;; esac
+}
+
+# Sets SUPERVISOR when it is empty or `auto`, and checks the chosen one exists.
+#
+# A campaign that was started under tmux must still be visible to `status` and
+# stoppable by `stop` when those are called without the flag, so the choice is
+# recorded next to the results and read back here. Re-deriving it instead would
+# quietly look at the wrong supervisor on a machine where both are available.
+resolve_supervisor() {
+    local why=""
+    if { [ -z "$SUPERVISOR" ] || [ "$SUPERVISOR" = auto ]; } && [ -f "$(sup_file)" ]; then
+        SUPERVISOR=$(cat "$(sup_file)")
+        why="recorded in $(sup_file)"
+    fi
+
+    if [ -z "$SUPERVISOR" ] || [ "$SUPERVISOR" = auto ]; then
+        if systemd_usable && linger_on; then
+            SUPERVISOR=systemd
+            info "supervisor: systemd (linger is already enabled)"
+        elif systemd_usable && loginctl enable-linger "$USER" 2>/dev/null; then
+            SUPERVISOR=systemd
+            info "supervisor: systemd (linger enabled for $USER just now)"
+        elif have tmux; then
+            SUPERVISOR=tmux
+            info "supervisor: tmux -- systemd was not usable without linger,"
+            info "            which only an administrator can grant here"
+        else
+            die "no usable supervisor: systemd needs linger (ask an administrator
+       for 'loginctl enable-linger $USER'), and tmux is not installed.
+       'apt install tmux', or run campaign.jl in the foreground."
+        fi
+    else
+        info "supervisor: $SUPERVISOR (${why:-you chose it})"
+    fi
+
+    case "$SUPERVISOR" in
+        systemd)
+            systemd_usable || die "systemctl --user is not available in this session"
+            linger_on || info "WARNING: linger is off, so this service stops at logout.
+       Ask for 'loginctl enable-linger $USER', or use --supervisor=tmux."
+            ;;
+        tmux)   have tmux || die "tmux is not installed" ;;
+    esac
+
+    if [ "$SUPERVISOR" != systemd ]; then
+        local kup=0
+        kill_user_processes || kup=$?
+        if [ "$kup" -eq 0 ]; then
+            info "WARNING: logind has KillUserProcesses=yes on this machine, so a"
+            info "         detached $SUPERVISOR session is killed at logout too."
+            info "         Only linger fixes that -- ask an administrator."
+        elif [ "$kup" -eq 2 ]; then
+            info "note: could not read logind's KillUserProcesses setting. If it is"
+            info "      'yes' on this machine, a detached session dies at logout."
+        fi
+        info "note: $SUPERVISOR does not survive a reboot and does not restart a"
+        info "      driver that died. --watchdog covers both, through cron."
+    fi
 }
 
 # --------------------------------------------------------------- benchmarking
@@ -197,6 +308,98 @@ calibrate() {
     fi
 }
 
+# ------------------------------------------------------------------ launching
+
+# The exact command, written down once. systemd gets it through ExecStart; tmux
+# runs this file. Having it on disk also means `status` can show what
+# is running, and a watchdog can restart it without re-deriving --jobs.
+#
+# cron gives a near-empty PATH, so the interpreter is resolved here and now.
+write_launcher() {
+    local julia
+    julia=$(command -v julia)
+    mkdir -p "$OUT"
+
+    cat > "$(launcher)" <<EOF
+#!/usr/bin/env bash
+# Generated by run-campaign.sh on $(date -Is). Re-run it rather than editing.
+set -euo pipefail
+cd "$REPO_ROOT"
+export CAMPAIGN_OUT="$OUT"
+# Nice=10 and IOSchedulingClass=idle in the systemd unit; the same politeness
+# here, so a campaign never competes with interactive work or a benchmark.
+exec nice -n 10 ionice -c 3 "$julia" --startup-file=no \\
+     scripts/testu01/campaign.jl --battery=$BATTERY --jobs=$JOBS --out="$OUT"
+EOF
+    chmod +x "$(launcher)"
+    printf '%s\n' "$SUPERVISOR" > "$(sup_file)"
+    info "launcher: $(launcher)"
+}
+
+# --- is it running? -----------------------------------------------------------
+
+is_running() {
+    case "$SUPERVISOR" in
+        systemd) systemctl --user is-active --quiet "$(unit_name)" ;;
+        tmux)    tmux has-session -t "=$(session)" 2>/dev/null ;;
+        *)       return 1 ;;      # no supervisor resolved yet: nothing is running
+    esac
+}
+
+# --- start --------------------------------------------------------------------
+
+start_supervised() {
+    case "$SUPERVISOR" in
+        systemd)
+            [ -f "$(unit_file)" ] || die "no unit for $BATTERY yet -- run 'prepare' first"
+            systemctl --user start "$(unit_name)"
+            ;;
+        tmux)
+            [ -x "$(launcher)" ] || die "no launcher at $(launcher) -- run 'prepare' first"
+            # A unix socket path is limited to about 100 bytes, and tmux appends
+            # roughly 20 to this directory. Over the limit it fails with
+            # "File name too long", which says nothing about the cause.
+            [ "${#TMUX_TMPDIR}" -lt 80 ] || die "TMUX_TMPDIR is too long for a unix
+       socket ($TMUX_TMPDIR). Set it to something short, e.g.
+       TMUX_TMPDIR=\$HOME/.cache/rds-tmux $0 start --battery=$BATTERY"
+            mkdir -p "$TMUX_TMPDIR"; chmod 700 "$TMUX_TMPDIR"
+            tmux new-session -d -s "$(session)" \
+                 "bash '$(launcher)' 2>&1 | tee -a '$(runlog)'"
+            ;;
+    esac
+}
+
+# --- stop ---------------------------------------------------------------------
+
+# SIGINT, not SIGKILL: the driver stops scheduling and waits for the jobs in
+# flight, which is what makes an interrupted campaign cheap. The systemd unit
+# says the same thing with KillSignal=SIGINT and TimeoutStopSec=6h.
+stop_supervised() {
+    case "$SUPERVISOR" in
+        systemd)
+            systemctl --user stop "$(unit_name)"
+            ;;
+        tmux)
+            if ! is_running; then
+                info "no tmux session named $(session)"
+                return
+            fi
+            # the session name, not "=name": that form matches a session for
+            # has-session but does not resolve to a pane for send-keys
+            tmux send-keys -t "$(session):" C-c
+            info "SIGINT sent; waiting for the jobs in flight (up to 6h)"
+            local waited=0
+            while is_running && [ "$waited" -lt 21600 ]; do
+                sleep 5; waited=$((waited + 5))
+            done
+            if is_running; then
+                info "still running after 6h -- killing the session"
+                tmux kill-session -t "=$(session)"
+            fi
+            ;;
+    esac
+}
+
 # ------------------------------------------------------------------ the unit
 
 install_unit() {
@@ -228,30 +431,111 @@ install_unit() {
     grep '^ExecStart=' "$(unit_file)" | sed 's/^/    /'
 }
 
+# -------------------------------------------------------------------- watchdog
+
+# What systemd gave for free and tmux does not: come back after a reboot, and
+# after a driver that died. cron needs no privileges and runs outside any login
+# session, so it works exactly where linger is refused. The campaign resumes
+# from summary.tsv, so restarting it costs only the jobs that were in flight.
+watchdog_lines() {
+    local self="$REPO_ROOT/scripts/run-campaign.sh"
+    local args="--battery=$BATTERY --out=$OUT --supervisor=$SUPERVISOR"
+    printf '%s\n' \
+        "@reboot $self ensure $args >/dev/null 2>&1 $(cron_tag)" \
+        "*/15 * * * * $self ensure $args >/dev/null 2>&1 $(cron_tag)"
+}
+
+crontab_without_ours() {
+    crontab -l 2>/dev/null | grep -vF "$(cron_tag)" || true
+}
+
+# Never `crontab -l | ... | crontab -`: the two ends of that pipeline run at the
+# same time, on the same table, and whether the reader finishes before the
+# writer replaces it is not something to bet somebody's other cron jobs on.
+# Build the whole new table first, then install it in one go.
+replace_crontab() {
+    local new
+    new=$(mktemp)
+    cat > "$new"
+    # A crontab that came out empty would silently delete every other job the
+    # user has. It is never what we mean: we only ever add or remove two lines.
+    if [ ! -s "$new" ] && [ -n "$(crontab -l 2>/dev/null)" ]; then
+        rm -f "$new"
+        die "refusing to install an empty crontab over a non-empty one"
+    fi
+    crontab "$new"
+    rm -f "$new"
+}
+
+backup_crontab() {
+    mkdir -p "$OUT"
+    crontab -l > "$OUT/crontab.backup" 2>/dev/null || true
+    [ -s "$OUT/crontab.backup" ] && info "crontab backed up to $OUT/crontab.backup"
+    return 0
+}
+
+install_watchdog() {
+    have crontab || die "--watchdog needs crontab, which is not installed"
+    say "Installing the watchdog in your user crontab"
+    backup_crontab
+    { crontab_without_ours; watchdog_lines; } > "$OUT/.crontab.new"
+    replace_crontab < "$OUT/.crontab.new"
+    rm -f "$OUT/.crontab.new"
+    watchdog_lines | sed 's/^/    /'
+    info "your other cron jobs are untouched; removed again by:"
+    info "  $0 stop --battery=$BATTERY"
+}
+
+remove_watchdog() {
+    have crontab || return 0
+    crontab -l 2>/dev/null | grep -qF "$(cron_tag)" || return 0
+    info "removing the watchdog from your crontab"
+    backup_crontab
+    crontab_without_ours > "$OUT/.crontab.new"
+    replace_crontab < "$OUT/.crontab.new"
+    rm -f "$OUT/.crontab.new"
+}
+
 # ------------------------------------------------------------------ commands
 
 cmd_prepare() {
     check_environment
     run_benchmark
     calibrate
-    install_unit
+    write_launcher
+    if [ "$SUPERVISOR" = systemd ]; then
+        install_unit
+    fi
 
     say "Ready"
     info "output directory: $OUT"
+    info "supervisor:       $SUPERVISOR"
     cat <<EOF
 
     Start it with:
 
-        $0 start --battery=$BATTERY
+        $0 start --battery=$BATTERY --supervisor=$SUPERVISOR
 
 EOF
 }
 
 cmd_start() {
-    [ -f "$(unit_file)" ] || die "no unit for $BATTERY yet -- run 'prepare' first"
-    systemctl --user start "$(unit_name)"
+    resolve_supervisor
+    is_running && die "already running -- '$0 status --battery=$BATTERY' to see it"
+    start_supervised
+    if [ "$WATCHDOG" -eq 1 ]; then
+        install_watchdog
+    fi
+
     say "Started"
-    systemctl --user --no-pager status "$(unit_name)" | head -12 || true
+    case "$SUPERVISOR" in
+        systemd) systemctl --user --no-pager status "$(unit_name)" | head -12 || true ;;
+        tmux)    info "session: $(session)   attach with: tmux attach -t $(session)" ;;
+    esac
+    if [ "$SUPERVISOR" != systemd ]; then
+        info "log:     $(runlog)"
+    fi
+
     cat <<EOF
 
     It now runs without you. Useful later:
@@ -266,10 +550,43 @@ cmd_start() {
 EOF
 }
 
+# Idempotent start, for the watchdog: do nothing if it is already running, if
+# there is nothing prepared, or if the campaign was stopped on purpose.
+# `touch <out>/STOP` is the documented clean stop, and a watchdog that undid it
+# fifteen minutes later would make that instruction a lie.
+cmd_ensure() {
+    resolve_supervisor >/dev/null 2>&1 || exit 0
+    is_running && exit 0
+    [ -x "$(launcher)" ] || exit 0
+    [ -f "$OUT/STOP" ] && exit 0
+    start_supervised
+}
+
 cmd_status() {
-    say "Service"
-    systemctl --user --no-pager status "$(unit_name)" 2>/dev/null | head -12 \
-        || info "not running"
+    resolve_supervisor
+
+    say "Supervisor ($SUPERVISOR)"
+    case "$SUPERVISOR" in
+        systemd)
+            systemctl --user --no-pager status "$(unit_name)" 2>/dev/null | head -12 \
+                || info "not running"
+            ;;
+        tmux)
+            if is_running; then
+                info "session $(session): running"
+            else
+                info "session $(session): not running"
+            fi
+            if [ -f "$(runlog)" ]; then
+                info "last lines of $(runlog):"
+                tail -5 "$(runlog)" | sed 's/^/      /'
+            fi
+            ;;
+    esac
+
+    if have crontab && crontab -l 2>/dev/null | grep -qF "$(cron_tag)"; then
+        info "watchdog: installed (restarts it if it stops, and at reboot)"
+    fi
 
     say "Progress"
     julia "$SCRIPT_DIR/testu01/campaign.jl" \
@@ -282,7 +599,9 @@ cmd_status() {
 }
 
 cmd_stop() {
-    systemctl --user stop "$(unit_name)"
+    resolve_supervisor
+    remove_watchdog          # or it would start the campaign again in 15 minutes
+    stop_supervised
     say "Stopped. Everything already finished is recorded in $OUT/summary.tsv"
 }
 
@@ -329,6 +648,7 @@ parse_args "$@"
 case "$command" in
     prepare) cmd_prepare ;;
     start)   cmd_start ;;
+    ensure)  cmd_ensure ;;
     run)     cmd_prepare; cmd_start ;;
     status)  cmd_status ;;
     stop)    cmd_stop ;;

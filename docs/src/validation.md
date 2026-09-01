@@ -103,7 +103,7 @@ Each run writes TestU01's own report to its own log and appends a line to
 CPU. Per-test reports are on by default: they are the canonical artefact to
 archive, and they make a long run observable — the log fills as tests complete,
 so progress can be followed with `tail -f` and an interrupted run still leaves
-its completed tests behind. Run it under `nohup`, `tmux` or `screen`:
+its completed tests behind. Run it under `nohup` or `tmux`:
 
 ```bash
 nohup julia scripts/testu01/validate.jl --battery=bigcrush --suite=all > run.out 2>&1 &
@@ -163,6 +163,65 @@ The unit stops with `SIGINT` and a six-hour stop timeout, so `systemctl --user
 stop` lets the driver wait for its children rather than killing them, and
 `Restart=on-failure` brings back a driver that died — it resumes from
 `summary.tsv` like any other invocation.
+
+### When `enable-linger` is not yours to run
+
+That first line is the one that needs an administrator. Without it, systemd
+kills user services at logout, which is exactly what a two-week sweep must
+survive. On a shared machine the answer is often "no", so
+`scripts/run-campaign.sh` can supervise the campaign with **tmux** instead:
+
+```bash
+./scripts/run-campaign.sh run --battery=crush --supervisor=tmux --watchdog
+./scripts/run-campaign.sh status --battery=crush      # no flag needed afterwards
+./scripts/run-campaign.sh stop   --battery=crush
+```
+
+`--supervisor=auto`, the default, uses systemd when linger is on or can be
+turned on, and falls back to tmux. The choice is recorded in the output
+directory, so `status`, `stop` and `collect` find the campaign without being
+told again.
+
+What tmux does not give you is what `--watchdog` restores, through a *user*
+crontab entry that needs no privileges:
+
+| | systemd unit | tmux | tmux + `--watchdog` |
+|---|---|---|---|
+| survives logout | with linger | yes, unless `KillUserProcesses=yes` | same |
+| survives a reboot | yes | no | yes (`@reboot`) |
+| restarts a driver that died | `Restart=on-failure` | no | yes, within 15 min |
+| attach and watch it work | `journalctl -f` | `tmux attach` | `tmux attach` |
+
+Two details the script handles, both of which are silent failures otherwise.
+`KillUserProcesses=yes` in `logind.conf` kills a detached tmux session at logout
+just as it kills an unlingered service, so tmux is *not* a workaround on such a
+machine — `run-campaign.sh` reads the setting and says so before you commit two
+weeks to it. And tmux keeps its socket under `/run/user/$UID`, a directory that
+is removed when your last session ends; the script points `TMUX_TMPDIR` at a
+directory under `$HOME` instead, so the session started from your login shell
+and the one the watchdog looks for are the same session.
+
+The watchdog respects `touch <out>/STOP`: a campaign you stopped on purpose
+stays stopped. `stop` removes the crontab entry, and any crontab it edits is
+backed up to `<out>/crontab.backup` first — your other cron jobs are never
+touched.
+
+**Every result names the code that produced it.** `summary.tsv` records the
+package version, the commit of `HEAD` and whether the working tree was clean,
+alongside the Julia version, the CPU and — for the interleaved suite — the
+number of streams and values per stream. Each battery log repeats it in its
+header. A campaign started from a dirty tree prints a warning before it begins,
+because a run measured in weeks cannot be repeated to find out afterwards which
+code produced it. The same line appears at the top of the throughput benchmark's
+report.
+
+**Do not benchmark and validate at the same time.** The throughput figures in
+the implementation notes are minima over samples on an unloaded machine; a host
+running six BigCrush processes will produce numbers that measure the scheduler.
+Run `scripts/benchmarks/throughput.jl` first, pinned, then start the campaign.
+On a hybrid CPU (Intel 12th generation and later) pin the benchmark to a
+performance core with `taskset`; the batteries can use any core, since their
+results do not depend on how fast they were produced.
 
 ### What still needs BigCrush
 

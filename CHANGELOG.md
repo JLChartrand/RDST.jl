@@ -8,6 +8,22 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A campaign supervisor that does not need `loginctl enable-linger`.**
+  `scripts/run-campaign.sh` takes `--supervisor=auto|systemd|tmux`: systemd when
+  linger is on or can be turned on, tmux otherwise, for the common case where
+  linger is an administrator's call and the answer is no.
+  `--watchdog` adds a *user* crontab entry that restores what systemd was
+  giving — restart after a reboot, restart after a driver that died — with no
+  privileges. The supervisor is recorded next to the results, so `status`,
+  `stop` and `collect` need no extra flag; `stop` removes the watchdog again;
+  and `touch <out>/STOP` is respected, so a campaign stopped on purpose is not
+  restarted fifteen minutes later. Two silent failures are handled rather than
+  left to be discovered: `KillUserProcesses=yes` kills a detached tmux session
+  at logout exactly as it kills an unlingered service, which the script reports
+  before a two-week sweep rather than after; and tmux's socket lives under
+  `/run/user/$UID`, which disappears with your last session, so the sockets are
+  moved under `$HOME`.
+
 - **MRG63k3a** (L'Ecuyer 1999, Table II, fourth entry): `MRG63k3a` and
   `MRG63k3aGen`, the 64-bit-arithmetic member of the MRG32k3a family. Two
   moduli just under `2^63`, period ≈ `2^377`, and just under 63 random bits per
