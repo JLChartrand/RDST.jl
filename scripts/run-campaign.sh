@@ -72,7 +72,13 @@ unit_file() { echo "$HOME/.config/systemd/user/$(unit_name).service"; }
 session()   { echo "randomdatastreams-$BATTERY"; }
 sup_file()  { echo "$OUT/supervisor"; }
 launcher()  { echo "$OUT/campaign-command.sh"; }
-runlog()    { echo "$OUT/campaign.log"; }
+# Not campaign.log: campaign.jl writes that one itself, through note(), while
+# the tmux supervisor pipes the same stdout through `tee`. Aimed at a single
+# file the two of them wrote every line twice, which `status` then showed back
+# doubled. The tee earns its own file rather than being dropped -- it catches
+# what never reaches note(): a Julia stack trace, a bash error out of the
+# launcher, anything the driver said on its way down.
+runlog()    { echo "$OUT/supervisor.log"; }
 cron_tag()  { echo "# randomdatastreams-campaign $BATTERY"; }
 
 parse_args() {
