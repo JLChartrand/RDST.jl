@@ -113,10 +113,10 @@ tail -f testu01-results/bigcrush-*.log
 ## Long campaigns: running for days without a session
 
 `validate.jl` runs one battery in one process, serially. That is the wrong shape
-for a BigCrush sweep: the full matrix is 16 generators times 3 suites, 48 runs,
-each taking the better part of a day, so a single process means weeks of
-sequential work in which one crash loses everything and a lost SSH session ends
-the campaign.
+for a BigCrush sweep: the full matrix is seventeen generators times three
+suites, 51 runs, each taking the better part of a day, so a single process means
+weeks of sequential work in which one crash loses everything and a lost SSH
+session ends the campaign.
 
 `scripts/testu01/campaign.jl` runs the same matrix as independent OS processes:
 
