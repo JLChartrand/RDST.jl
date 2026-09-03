@@ -5,8 +5,10 @@
 The validation is deliberately split in two. The **package test suite** runs
 SmallCrush only, over three suites, and answers the question "does this
 installation work" in about three minutes. **Crush and BigCrush run on demand**
-through `scripts/testu01/validate.jl`, because they take hours to days; see the
-last section.
+through `scripts/testu01/validate.jl`, because they take hours to days; see
+[Running Crush and BigCrush](#Running-Crush-and-BigCrush). What the wrapper
+does not carry over from the C library, and what that costs, is set out in
+[What RNGTest does not give us](#What-RNGTest-does-not-give-us) at the end.
 
 ## In the test suite: SmallCrush
 
@@ -393,3 +395,79 @@ Two things the suite cannot settle at SmallCrush level:
   pass is a smoke test; the claim worth publishing is a BigCrush one.
 
 Results belong in the JOSS submission, not in CI.
+
+## What RNGTest does not give us
+
+Every battery on this page runs through
+[RNGTest.jl](https://github.com/JuliaRandom/RNGTest.jl), which wraps a part of
+the [C library](https://github.com/blep/TestU01) rather than all of it. The
+gaps are not defects — the package needs three batteries and gets them — but
+several of them shape how the results here are produced and read, so they
+belong in the record rather than in a rediscovery six months from now. The one
+that stops the wrapper running at all is
+[Platform limitation](#Platform-limitation) above.
+
+**The batteries return nothing.** `smallcrushTestU01`, `crushTestU01` and
+`bigcrushTestU01` are `Cvoid` calls: TestU01 writes its report to C's stdout
+and the Julia call yields no value. The C globals that hold the answer —
+`bbattery_pVal[]`, `bbattery_NTests`, `bbattery_TestNames[]` — are not exposed
+either. That is why the log *is* the result here: `validate.jl` captures
+TestU01's own text, `summary.tsv` records the run beside it, and `replay.jl`
+reads the suspects back out of the log rather than out of a return value. It is
+also why the per-test reports earn their place beyond archiving — with them
+off, a battery that dies at hour nine leaves nothing at all.
+
+**Per-test reports are off unless we turn them back on.** RNGTest's `__init__`
+stores `false` into TestU01's `swrite_Basic` when the package loads, which
+leaves only the closing summary. `validate.jl` stores `true` back through
+`cglobal`, and reports `false` if the symbol cannot be reached — in which case
+the run still produces its summary, just nothing to follow with `tail -f`. A
+log with no per-test blocks is that path, not a truncated run.
+
+**One battery per process.** TestU01 keeps its state in C globals and is not
+reentrant; RNGTest's own `Unif01` constructor carries the note that creating a
+second one crashes the library. Batteries therefore cannot be threaded or run
+as tasks side by side in one process, which is why `campaign.jl` runs the
+matrix as independent OS processes — that constraint first, resumption second.
+
+**The test suite does not run the C battery.** `test/test_testu01.jl`,
+`test/test_bits.jl` and `test/test_streams_interleaved.jl` call
+`RNGTest.smallcrushJulia`, which applies SmallCrush's ten tests one at a time
+from Julia, with the battery's own parameters, and *returns* their p-values —
+the only way to assert on them, given the point above. It is not quite the same
+object as `bbattery_SmallCrush`: it keeps a subset of the statistics
+(`sstring_HammingIndep` contributes its `Mean` alone, where the C battery
+prints more), and there is no `crushJulia`, which is one reason the on-demand
+harness drives the C batteries instead. It also distributes its ten tests with
+`pmap`: under `julia -p N` the generator closure is serialised to each worker,
+so every test would start from the same state — ten tests on one stream. Run
+`Pkg.test` without added workers.
+
+**A `Function` generator loses its first 100 values.** `Unif01(f::Function,
+name)` calls `f()` a hundred times to check that it returns a `Float64` in
+[0, 1] before handing the pointer to TestU01. The `single` and `interleaved`
+suites pass closures, so their batteries begin 100 values into the stream — and
+each test of `smallcrushJulia` pays it again, since every test builds its own
+`Unif01`. The `bits` suite passes a `RNGTest.wrap` object, which is not checked
+and starts at the origin. Nothing is invalidated by this, a stream offset by
+100 being still the stream, but two suites do not start at the same place and a
+reproduction that ignores it will not match value for value.
+
+**The repeat batteries are called directly.** `bbattery_RepeatSmallCrush`,
+`RepeatCrush` and `RepeatBigCrush` have no wrapper, so `replay.jl` calls them
+through `RNGTest.libtestu01` with the symbol spelled out per battery. Nothing
+in the replay machinery would exist as it does if RNGTest exposed them.
+
+The rest is coverage, and matters only if you want to go beyond what this page
+does:
+
+| in the C library | in RNGTest |
+|---|---|
+| batteries `Rabbit`, `Alphabit`, `BlockAlphabit`, and every `*File` variant | absent; `SmallCrush`, `Crush`, `BigCrush`, `pseudoDIEHARD` and `FIPS_140_2` are wrapped |
+| the individual tests of ten `s*` modules | 32 of them; `smultin`, `sentrop` and `sspacings` have no wrapper at all, and `sknuth_Serial`, `smarsa_Opso`, `svaria_SumLogs`, `swalk_RandomWalk1a`, `sspectral_Fourier1`/`2`, `sstring_HammingWeight` and `snpair_BickelBreiman` are among the missing ones inside the wrapped modules |
+| predefined generator families (`ulcg`, `umrg`, `ufile`, …), filters and combinations, `unif01_TimerSumGenWr` | external generators only, returning `Float64` or `UInt32` |
+| `gofw_Suspectp`, the threshold a battery prints against | fixed at 0.001; reachable through `cglobal` the way `swrite_Basic` is, but not exposed |
+
+The absence of `Rabbit` and `Alphabit` is the one that costs something here:
+they are the bit-level batteries, and the `bits` suite runs SmallCrush over a
+`UInt32` stream in their place.
