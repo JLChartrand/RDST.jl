@@ -189,15 +189,23 @@ are different counts.
 
 The 2026 Crush campaign — seventeen generators, three suites, 51 runs — gives
 the rule something to bite on. **No p-value came within four orders of
-magnitude of 10⁻¹⁰**, so nothing was a failure. Sixteen lines were singled out,
-against ≈15 expected: an unremarkable count.
+magnitude of 10⁻¹⁰**, so nothing was a failure outright. Eighteen lines were
+singled out across fifteen runs, against ≈15 expected: an unremarkable count,
+but a count is not an answer for any particular line.
 
-Two things still deserved a replay rather than a shrug. The most extreme
-p-value, 6.7 × 10⁻⁶, is more extreme than one would typically see among 7344
-statistics (probability ≈ 9%). And `Threefry4x64-20` in the interleaved suite
-carried three of the sixteen on its own, where a run with three or more arises
-in about 15% of campaigns this size. Replayed on streams 1025 and up, three
-times each, those three gave:
+So all eighteen were replayed, three times each on disjoint streams — 54
+replications, about twelve minutes of work. **Not one produced a p-value
+outside [0.001, 0.999].** The suspects were chance, every one of them, which is
+what a campaign of this size is expected to manufacture and exactly what the
+replay exists to establish rather than assume.
+
+Two of them had looked worth the trouble. The most extreme p-value,
+6.7 × 10⁻⁶ (`Xoshiro256ss`, bits, ClosePairs mNP), is more extreme than one
+would typically see among 7344 statistics — probability ≈ 9%. And
+`Threefry4x64-20` carried five of the eighteen across two of its three suites,
+three of them in the interleaved run alone, where three or more in one run
+arises in about 15% of campaigns this size. Replayed on streams 1025 and up,
+those three gave:
 
 | test | original | replay 1 | replay 2 | replay 3 |
 |---|---|---|---|---|
@@ -205,9 +213,9 @@ times each, those three gave:
 | 60 MatrixRank, 1200 × 1200 | 1.3 × 10⁻⁴ | 0.25 | 0.96 | 0.73 |
 | 90 HammingIndep, L = 1200 | 8.6 × 10⁻⁴ | 0.79 | 0.65 | 0.45 |
 
-Suspicion gone, in 106 seconds. That is the shape the write-up should take for
-each suspect: the original p-value, the replications, and the p-values
-themselves.
+Suspicion gone, in 106 seconds against the 30 minutes the run itself took.
+That is the shape the write-up should take for each suspect: the original
+p-value, the replications, and the p-values themselves — not a verdict.
 
 ## Long campaigns: running for days without a session
 
