@@ -206,6 +206,54 @@ stays stopped. `stop` removes the crontab entry, and any crontab it edits is
 backed up to `<out>/crontab.backup` first — your other cron jobs are never
 touched.
 
+### A home directory that answers to a ticket
+
+Where `$HOME` is an NFS mount secured with Kerberos — `sec=krb5` in the output
+of `findmnt -T ~ -o OPTIONS` — the files answer to a *ticket*, not to your uid.
+When the ticket lapses, every process you own loses the directory at the same
+instant: the driver in the middle of writing a result, and `cron` before it can
+so much as read the watchdog's copy of this script. Tickets are measured in
+hours and campaigns in days, so this is not a corner case. It is what happens
+by default to a sweep left to run.
+
+Nothing in the campaign reports it, because nothing in the campaign can still
+write anywhere to report it. From outside, it looks like a watchdog that
+quietly stopped firing; the system's cron log tells the real story, one line
+per attempt:
+
+```
+CROND[91468]: (CRON) ERROR chdir failed (/u/you): Permission denied
+```
+
+`prepare` recognises the case. It refuses to begin without a valid ticket, and
+wraps the driver in `krenew`, which renews the ticket for as long as the
+campaign runs:
+
+```bash
+exec nice -n 10 ionice -c 3 /usr/bin/krenew -K 30 -- julia ... campaign.jl
+```
+
+Two limits are worth knowing before committing days to a sweep. First,
+**renewal has its own deadline**: a renewable ticket may be renewed only until
+the `renew until` that `klist -f` prints, typically some weeks after the
+`kinit` that created it, and a ticket that is not renewable at all cannot be
+rescued — `prepare` warns in both cases. A fresh login before a long campaign
+restarts that clock. Second, **the watchdog needs a ticket of its own**: the
+launcher's `krenew` runs only while the campaign does, and the watchdog exists
+for the times it does not. Keep one renewed independently of it:
+
+```bash
+krenew -K 30 -b        # a background daemon, renewing every 30 minutes
+```
+
+The alternative dissolves the question rather than answering it — put the
+checkout and the results on a filesystem that needs no ticket, such as local
+scratch space:
+
+```bash
+./scripts/run-campaign.sh prepare --battery=bigcrush --out=/var/tmp/$USER-bigcrush
+```
+
 **Every result names the code that produced it.** `summary.tsv` records the
 package version, the commit of `HEAD` and whether the working tree was clean,
 alongside the Julia version, the CPU and — for the interleaved suite — the
