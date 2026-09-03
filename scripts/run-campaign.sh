@@ -15,6 +15,7 @@
 #     ./scripts/run-campaign.sh stop    --battery=crush
 #     ./scripts/run-campaign.sh ensure  --battery=crush   # start only if stopped
 #     ./scripts/run-campaign.sh collect --battery=crush
+#     ./scripts/run-campaign.sh replay  --battery=crush   # resolve the suspects
 #
 # There is no default battery, here or in campaign.jl. A stray argument must not
 # be able to start a two-week BigCrush sweep.
@@ -34,6 +35,12 @@
 #                         is not running, and at reboot. Needs no privileges,
 #                         and `stop` removes it again.
 #
+# Suspects. A summary report singles out every p-value outside [0.001, 0.999],
+# which is a printing threshold and not a verdict: across a campaign a handful
+# of those are expected from chance alone. `replay` re-applies just those tests,
+# on streams the original run never drew from, which is what tells a fluke from
+# a failure. See docs/src/validation.md for the rule it serves.
+#
 # Kerberos. Where the checkout or the results sit on a krb5-secured filesystem
 # -- an NFS home, at most sites -- those files answer to a ticket rather than to
 # your uid, and a ticket is measured in hours while a campaign is measured in
@@ -52,6 +59,8 @@ SKIP_BENCHMARK=0
 ALLOW_DIRTY=0
 SUPERVISOR=""
 WATCHDOG=0
+REPS=3
+DRY_RUN=0
 
 # tmux keeps its socket under /run/user/$UID by default, and that directory is
 # created for a login session and removed when the last one ends -- precisely
@@ -96,6 +105,8 @@ parse_args() {
             --allow-dirty)    ALLOW_DIRTY=1 ;;
             --supervisor=*)   SUPERVISOR="${a#*=}" ;;
             --watchdog)       WATCHDOG=1 ;;
+            --reps=*)         REPS="${a#*=}" ;;
+            --dry-run)        DRY_RUN=1 ;;
             -h|--help)        usage 0 ;;
             *)                die "unknown option: $a" ;;
         esac
@@ -744,6 +755,47 @@ cmd_stop() {
     say "Stopped. Everything already finished is recorded in $OUT/summary.tsv"
 }
 
+# Every run the campaign finished, asked again about the tests it singled out.
+# replay.jl does the thinking -- which log in a run directory is the complete
+# one, which tests were flagged, which streams to skip so the output is disjoint
+# -- so this only has to walk the directories and keep going when one of them
+# has nothing to say.
+cmd_replay() {
+    [ -d "$OUT/runs" ] || die "no runs directory at $OUT/runs -- has this campaign run?"
+
+    say "Replaying what $BATTERY singled out"
+    info "each flagged test re-applied $REPS time(s), on streams the original never used"
+    [ "$DRY_RUN" -eq 1 ] && info "--dry-run: listing only, nothing will be run"
+
+    local d name rc
+    local ran=0 quiet=0 skipped=0
+    for d in "$OUT"/runs/*/; do
+        [ -d "$d" ] || continue
+        name=$(basename "$d")
+        rc=0
+        julia --project="$SCRIPT_DIR/testu01" "$SCRIPT_DIR/testu01/replay.jl" \
+              --log="$d" --reps="$REPS" \
+              $([ "$DRY_RUN" -eq 1 ] && echo --list) || rc=$?
+        if [ "$rc" -ne 0 ]; then
+            skipped=$((skipped + 1))
+            info "skipped $name (no complete log to read)"
+        else
+            ran=$((ran + 1))
+        fi
+    done
+
+    say "Done"
+    info "run directories read: $ran   skipped: $skipped"
+    info "replays are indexed in each run directory's replays.tsv"
+    cat <<EOF
+
+    A p-value that stays extreme on independent output is the generator
+    failing that test. One that scatters was the fluke the replay ruled out.
+    Report the p-values themselves, not a verdict.
+
+EOF
+}
+
 cmd_collect() {
     [ -d "$OUT" ] || die "no output directory at $OUT"
 
@@ -792,6 +844,7 @@ case "$command" in
     status)  cmd_status ;;
     stop)    cmd_stop ;;
     collect) cmd_collect ;;
+    replay)  cmd_replay ;;
     -h|--help|help) usage 0 ;;
     *)       die "unknown command: $command" ;;
 esac

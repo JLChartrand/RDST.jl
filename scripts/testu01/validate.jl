@@ -313,4 +313,10 @@ function main(args)
     println("p-value falls outside [1e-3, 1-1e-3], or says all tests were passed.")
 end
 
-main(ARGS)
+# Run the driver only when this file is the program. campaign.jl invokes it as
+# a script, exactly as before; replay.jl includes it for the generator table,
+# the suites and the TestU01 plumbing, and must not trigger a battery by doing
+# so.
+if abspath(PROGRAM_FILE) == @__FILE__
+    main(ARGS)
+end

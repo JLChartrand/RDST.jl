@@ -110,6 +110,105 @@ nohup julia scripts/testu01/validate.jl --battery=bigcrush --suite=all > run.out
 tail -f testu01-results/bigcrush-*.log
 ```
 
+## Reading a summary report
+
+Every battery ends with a list of the p-values it singled out. That list is not
+a verdict, and reading it as one is the easiest way to publish a wrong claim.
+
+The threshold TestU01 prints against is `gofw_Suspectp`, whose default is
+0.001: "any p-value less than α or larger than 1−α is considered suspect and is
+*singled out*". It is a **printing** threshold. A battery of Crush's size
+reports 144 statistics, so a campaign of 51 runs produces 7344 of them, and
+0.002 × 7344 ≈ 15 lines are expected from chance alone — before any generator
+has done anything wrong. (The statistics within a run are not independent, as
+several tests compute more than one from the same stream; that widens the
+spread but leaves the expected count unchanged.)
+
+The decision rule is in the TestU01 guide, under *Rejecting H₀*:
+
+> When a p-value is extremely close to 0 or to 1 (for example, if it is less
+> than 10⁻¹⁰), one can obviously conclude that the generator fails the test. If
+> the p-value is suspicious but failure is not clear enough, (p = 0.0005, for
+> example), then the test can be replicated independently until either failure
+> becomes obvious or suspicion disappears.
+
+So there are three outcomes, not two:
+
+| | criterion | what to do |
+|---|---|---|
+| **failure** | p < 10⁻¹⁰ or p > 1 − 10⁻¹⁰ | report it; no replay needed |
+| **suspect** | outside [0.001, 0.999] but inside [10⁻¹⁰, 1 − 10⁻¹⁰] | replay before calling it anything |
+| **pass** | anything else | TestU01 does not print it |
+
+Fix the number of replications before looking at them, and report the p-values
+rather than a reject/do-not-reject verdict — the guide is explicit that this
+"provides more information".
+
+### Replaying the suspects
+
+`scripts/testu01/replay.jl` re-applies only the tests a run singled out:
+
+```bash
+# one run: the newest complete log in that directory, its flagged tests, 3 times each
+julia scripts/testu01/replay.jl --log=<out>/runs/crush-interleaved-Threefry4x64_20
+
+# or by hand
+julia scripts/testu01/replay.jl --battery=crush --suite=bits \
+      --generator=Xoshiro256ss --tests=19 --reps=5
+
+# the whole campaign at once
+./scripts/run-campaign.sh replay --battery=crush --reps=3
+./scripts/run-campaign.sh replay --battery=crush --dry-run   # what it would do
+```
+
+Three things about it are worth knowing.
+
+**It costs minutes, not hours.** `bbattery_RepeatCrush(gen, rep)` applies test
+*i* of the battery `rep[i]` times and skips the rest. Resolving the three
+suspects of one Crush run took 106 seconds against the 30 minutes the run
+itself had taken — which is what makes the same discipline affordable at
+BigCrush, where a re-run would otherwise cost hours.
+
+**The output must be disjoint.** `seed_words` is a fixed seed on purpose, so a
+run can be reproduced exactly; re-running a suite the ordinary way therefore
+reproduces the same p-values and settles nothing. `--skip` advances the stream
+generator past everything the original consumed — 1024 streams by default, well
+clear of the 64 the interleaved suite takes — so the replay is the independent
+replication the guide asks for. This is the package's own stream facility doing
+the work the method requires.
+
+**The number beside a suspect is the test, not the statistic.** A battery
+reports more statistics than it has tests (144 against 96 for Crush), and
+TestU01 prints the *test* number, so several lines can carry the same one: five
+lines reading `10  RandomWalk1 ...` are one test with five statistics, not
+five tests. That number goes straight into `rep`, which is why no mapping table
+is needed — but it also means "three suspect lines" and "three suspect tests"
+are different counts.
+
+### The Crush campaign, worked through
+
+The 2026 Crush campaign — seventeen generators, three suites, 51 runs — gives
+the rule something to bite on. **No p-value came within four orders of
+magnitude of 10⁻¹⁰**, so nothing was a failure. Sixteen lines were singled out,
+against ≈15 expected: an unremarkable count.
+
+Two things still deserved a replay rather than a shrug. The most extreme
+p-value, 6.7 × 10⁻⁶, is more extreme than one would typically see among 7344
+statistics (probability ≈ 9%). And `Threefry4x64-20` in the interleaved suite
+carried three of the sixteen on its own, where a run with three or more arises
+in about 15% of campaigns this size. Replayed on streams 1025 and up, three
+times each, those three gave:
+
+| test | original | replay 1 | replay 2 | replay 3 |
+|---|---|---|---|---|
+| 19 ClosePairs mNP2, t = 3 | 1 − 2.9 × 10⁻⁵ | 0.9988 | 0.11 | 0.32 |
+| 60 MatrixRank, 1200 × 1200 | 1.3 × 10⁻⁴ | 0.25 | 0.96 | 0.73 |
+| 90 HammingIndep, L = 1200 | 8.6 × 10⁻⁴ | 0.79 | 0.65 | 0.45 |
+
+Suspicion gone, in 106 seconds. That is the shape the write-up should take for
+each suspect: the original p-value, the replications, and the p-values
+themselves.
+
 ## Long campaigns: running for days without a session
 
 `validate.jl` runs one battery in one process, serially. That is the wrong shape
