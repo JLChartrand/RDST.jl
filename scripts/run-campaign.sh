@@ -489,14 +489,23 @@ crontab_without_ours() {
 # Never `crontab -l | ... | crontab -`: the two ends of that pipeline run at the
 # same time, on the same table, and whether the reader finishes before the
 # writer replaces it is not something to bet somebody's other cron jobs on.
-# Build the whole new table first, then install it in one go.
+# Build the whole new table first, then install it in one go. Callers pass it
+# on stdin, and this reads to EOF before writing anything, so whoever produced
+# the table has finished with it by the time the table is replaced.
+#
+# A table that came out empty usually means something went wrong upstream, and
+# installing it would silently delete every other job the user has -- so it is
+# refused. The one case where an empty table is exactly right is `stop` on a
+# machine whose crontab holds nothing but our own two lines, which is the usual
+# state of a machine dedicated to a campaign. Only remove_watchdog knows it is
+# in that case, so only it passes allow_empty; without that, stop could never
+# take back the watchdog start had installed.
 replace_crontab() {
+    local allow_empty="${1:-0}"
     local new
     new=$(mktemp)
     cat > "$new"
-    # A crontab that came out empty would silently delete every other job the
-    # user has. It is never what we mean: we only ever add or remove two lines.
-    if [ ! -s "$new" ] && [ -n "$(crontab -l 2>/dev/null)" ]; then
+    if [ ! -s "$new" ] && [ "$allow_empty" != 1 ] && [ -n "$(crontab -l 2>/dev/null)" ]; then
         rm -f "$new"
         die "refusing to install an empty crontab over a non-empty one"
     fi
@@ -515,9 +524,10 @@ install_watchdog() {
     have crontab || die "--watchdog needs crontab, which is not installed"
     say "Installing the watchdog in your user crontab"
     backup_crontab
-    { crontab_without_ours; watchdog_lines; } > "$OUT/.crontab.new"
-    replace_crontab < "$OUT/.crontab.new"
-    rm -f "$OUT/.crontab.new"
+    # The table is staged in replace_crontab's own temporary file rather than
+    # under $OUT: a die between writing a staging file there and removing it
+    # leaves it behind, where the next `collect` bundles it with the results.
+    replace_crontab 0 < <(crontab_without_ours; watchdog_lines)
     watchdog_lines | sed 's/^/    /'
     info "your other cron jobs are untouched; removed again by:"
     info "  $0 stop --battery=$BATTERY"
@@ -528,9 +538,9 @@ remove_watchdog() {
     crontab -l 2>/dev/null | grep -qF "$(cron_tag)" || return 0
     info "removing the watchdog from your crontab"
     backup_crontab
-    crontab_without_ours > "$OUT/.crontab.new"
-    replace_crontab < "$OUT/.crontab.new"
-    rm -f "$OUT/.crontab.new"
+    # Empty is allowed here, and is the common case: on a machine set aside for
+    # a campaign, our two lines are the whole crontab.
+    replace_crontab 1 < <(crontab_without_ours)
 }
 
 # ------------------------------------------------------------------ commands
