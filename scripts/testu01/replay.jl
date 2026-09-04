@@ -9,6 +9,10 @@
 #     julia scripts/testu01/replay.jl --battery=crush --suite=bits \
 #           --generator=Xoshiro256ss --tests=19 --reps=5
 #
+# A bit-level battery (alphabit, rabbit) also needs the number of bits the
+# original run consumed: --log reads it from the log's header, otherwise pass
+# --bits.
+#
 # Why this exists. A summary report lists every p-value outside
 # [0.001, 0.999], which is `gofw_Suspectp` and nothing more than a printing
 # threshold: over a whole campaign a handful of those are expected from chance
@@ -115,6 +119,23 @@ function newest_finished(dir::AbstractString)
 end
 
 """
+    log_bits(log) -> Float64
+
+The `# bits = N` line validate.jl writes for a bit-level battery, or 0 when the
+log carries none. A replay of Alphabit or Rabbit has to consume the same number
+of bits as the run it replicates, and that number is not otherwise recoverable
+from the log.
+"""
+function log_bits(log::AbstractString)
+    for line in eachline(log)
+        startswith(line, "#") || break
+        m = match(r"^#\s*bits\s*=\s*([0-9.eE+]+)\s*$", line)
+        m === nothing || return parse(Float64, m[1])
+    end
+    return 0.0
+end
+
+"""
     header(log) -> (battery, suite, generator)
 
 validate.jl writes `# <battery> / <suite> / <generator>` as the first line of
@@ -152,7 +173,7 @@ end
 
 function parse_args(args)
     opts = (log = "", battery = "", suite = "", generator = "", tests = Int[],
-            reps = 3, skip = DEFAULT_SKIP, streams = 64, values = 1,
+            reps = 3, skip = DEFAULT_SKIP, streams = 64, values = 1, bits = 0.0,
             out = "", list = false)
     for a in args
         if a == "--list"
@@ -171,6 +192,7 @@ function parse_args(args)
             k == "skip"      ? (opts = merge(opts, (skip = parse(Int, v),))) :
             k == "streams"   ? (opts = merge(opts, (streams = parse(Int, v),))) :
             k == "values"    ? (opts = merge(opts, (values = parse(Int, v),))) :
+            k == "bits"      ? (opts = merge(opts, (bits = parse(Float64, v),))) :
             k == "out"       ? (opts = merge(opts, (out = v,))) :
             error("unknown option: $a")
         else
@@ -193,6 +215,7 @@ function parse_args(args)
         isempty(opts.generator) && (opts = merge(opts, (generator = g,)))
         isempty(opts.tests)     && (opts = merge(opts, (tests = first.(suspects(opts.log)),)))
         isempty(opts.out)       && (opts = merge(opts, (out = dirname(opts.log),)))
+        opts.bits == 0          && (opts = merge(opts, (bits = log_bits(opts.log),)))
     end
 
     isempty(opts.battery) && error("--battery is required (or --log, which carries it)")
@@ -202,6 +225,11 @@ function parse_args(args)
     isempty(opts.out) && (opts = merge(opts, (out = "testu01-results",)))
     opts.reps >= 1 || error("--reps must be at least 1")
     opts.skip >= 1 || error("--skip must be at least 1: the point is disjoint output")
+    if opts.battery in BIT_BATTERIES && opts.bits <= 0
+        error("$(opts.battery) consumes a fixed number of bits, and a replay has to " *
+              "consume the same number as the run it replicates. Pass --bits, or " *
+              "--log pointing at a run whose header records it.")
+    end
 
     n = ntests(opts.battery)
     for t in opts.tests
@@ -230,6 +258,7 @@ function main(args)
 
     println()
     println("replaying tests ", join(opts.tests, ", "), ", ", opts.reps, " time(s) each")
+    opts.battery in BIT_BATTERIES && @printf("%.0f bits per replication, as the original run\n", opts.bits)
     println("on streams ", opts.skip + 1, " and up, which the original run never drew from")
     if opts.list
         println("\n--list given, nothing run.")
@@ -259,6 +288,7 @@ function main(args)
             println(io, "# started ", now())
             println(io, "# REPLAY of tests ", join(opts.tests, ", "), ", ", opts.reps, " time(s) each")
             println(io, "# streams skipped before building the generator: ", opts.skip)
+            opts.battery in BIT_BATTERIES && @printf(io, "# bits = %.0f\n", opts.bits)
             isempty(opts.log) || println(io, "# source log: ", opts.log)
             opts.suite == "interleaved" &&
                 println(io, "# ", opts.streams, " streams, ", opts.values, " value(s) each, round-robin")
@@ -267,7 +297,7 @@ function main(args)
                 try
                     TU01.line_buffer_stdout()
                     TU01.verbose!(true)
-                    stats = TU01.repeat_battery(Symbol(opts.battery), g, rep)
+                    stats = TU01.repeat_battery(Symbol(opts.battery), g, rep; nb = opts.bits)
                 finally
                     TU01.flush_c_stdout()
                 end

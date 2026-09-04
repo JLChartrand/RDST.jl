@@ -13,7 +13,8 @@
 #     julia scripts/testu01/campaign.jl --status
 #
 # Options
-#   --battery=smallcrush|crush|bigcrush   REQUIRED, no default
+#   --battery=<name>                      REQUIRED, no default; see BATTERIES
+#   --bits=<n>                              size for alphabit/rabbit
 #   --suite=single|interleaved|bits|all   default all
 #   --generator=<name>|all                default all
 #   --jobs=<n>                            concurrent processes (default: cores/4)
@@ -48,7 +49,10 @@ const PROV = provenance()
 const HERE      = @__DIR__
 const VALIDATE  = joinpath(HERE, "validate.jl")
 const SUITES    = ["single", "interleaved", "bits"]
-const BATTERIES = ["smallcrush", "crush", "bigcrush"]
+const BATTERIES = ["smallcrush", "crush", "bigcrush", "alphabit", "rabbit"]
+
+"Batteries that take a size in bits, which is forwarded to the jobs."
+const BIT_BATTERIES = ("alphabit", "rabbit")
 
 # The generator list is `validate.jl`'s, read from it rather than duplicated, so
 # that adding a generator there adds it to the campaign.
@@ -65,7 +69,7 @@ function parse_args(args)
     # exactly what a default did once.
     opts = Dict{String,Any}("battery" => "", "suite" => "all",
                             "generator" => "all", "out" => "testu01-results",
-                            "jobs" => max(1, Sys.CPU_THREADS ÷ 4),
+                            "jobs" => max(1, Sys.CPU_THREADS ÷ 4), "bits" => "",
                             "calibrate" => false, "status" => false, "list" => false)
     for a in args
         if a in ("--calibrate", "--status", "--list")
@@ -120,6 +124,11 @@ function launch(job, opts)
     mkpath(dir)
     cmd = `$(Base.julia_cmd()) --startup-file=no $VALIDATE
            --battery=$b --suite=$s --generator=$g --out=$dir`
+    # The size only means anything to the bit-level batteries, and validate.jl
+    # rejects an option it does not expect, so it is passed only when it applies.
+    if !isempty(opts["bits"]) && b in BIT_BATTERIES
+        cmd = `$cmd --bits=$(opts["bits"])`
+    end
     io = open(joinpath(dir, "driver.log"), "a")
     println(io, "\n# launched ", now(), " by campaign.jl")
     flush(io)

@@ -77,6 +77,35 @@ every `U(0,1)` battery failed here with six p-values at zero. Note also that
 passing does not clear the lowest bits of the `+` scramblers, whose linear
 weakness Blackman & Vigna document and SmallCrush does not resolve.
 
+### The batteries that were built for bits
+
+SmallCrush over a `UInt32` stream is a smoke test on the integer path, not the
+instrument designed for it. TestU01's own bit-level batteries are **Alphabit**
+and **Rabbit**, and both run on demand:
+
+```bash
+julia scripts/testu01/validate.jl --battery=alphabit --suite=bits
+julia scripts/testu01/validate.jl --battery=rabbit --suite=bits --bits=4294967296
+```
+
+They differ from the Crush batteries in taking a *size*: `--bits` is how much
+output to consume, 2³⁰ by default. At that size Alphabit costs about half a
+minute — nine tests, seventeen statistics — and Rabbit about ten minutes, for
+twenty-six tests and some forty. Both are close to linear in the size above a
+fixed overhead, so four times the bits costs four times the time; Rabbit skips
+its larger `MatrixRank` tests when the size is too small to feed them, which is
+one reason not to shrink it far.
+
+Alphabit examines bits *r+1* through *r+s* of each word, and the `bits` suite
+delivers whole `UInt32`s, so the default (0, 32) uses all of them. Nothing stops
+either battery running on the `single` and `interleaved` suites — `unif01`
+extracts bits from a double as readily as from a word — and the campaign matrix
+covers all three.
+
+A replay has to consume the same number of bits as the run it replicates, so
+`validate.jl` records `# bits = N` in the log header and `replay.jl` reads it
+back from there; `--bits` overrides it.
+
 ## Running Crush and BigCrush
 
 These are **not** part of `Pkg.test()` and must not become part of it. The
@@ -101,10 +130,11 @@ julia scripts/testu01/validate.jl --battery=bigcrush --suite=single
 
 | option | values | default |
 |---|---|---|
-| `--battery` | `smallcrush`, `crush`, `bigcrush` | `smallcrush` |
+| `--battery` | `smallcrush`, `crush`, `bigcrush`, `alphabit`, `rabbit` | `smallcrush` |
 | `--suite` | `single`, `interleaved`, `bits`, `all` | `single` |
 | `--generator` | a generator name, or `all` | `all` |
 | `--streams`, `--values` | shape of the interleaved suite | 64, 1 |
+| `--bits` | output consumed by `alphabit` and `rabbit` | 2³⁰ |
 | `--out` | directory for logs | `testu01-results` |
 | `--list` | print the plan and exit | |
 | `--quiet` | summary only, no per-test reports | |
@@ -411,7 +441,8 @@ Two things the suite cannot settle at SmallCrush level:
   bits of `xoshiro256+` and `xoroshiro128+` as linearly weak. SmallCrush does
   not resolve it, so the `bits` suite passing at that level is not a
   clearance; the question needs Crush or BigCrush, and possibly does not show
-  even there.
+  even there. Alphabit and Rabbit on the bit stream are the cheaper instrument
+  aimed at exactly this, and are worth running first.
 - **Dependence between streams at full strength.** The interleaved suite is
   the construction L'Ecuyer et al. (2021) call for, and the paper says
   batteries for counter-based generators still need development. A SmallCrush
@@ -480,9 +511,12 @@ carrying. `TU01.verbose!` writes a `Cint`.
 **The repeat and bit-level batteries had no wrapper at all.** `bbattery_Repeat*`
 is what makes [Replaying the suspects](#Replaying-the-suspects) affordable, and
 `Rabbit`, `Alphabit` and `BlockAlphabit` are the batteries actually meant for a
-bit source — the `bits` suite runs SmallCrush over a `UInt32` stream for want of
-them. The layer exposes all of them; wiring the bit-level ones into the suites
-is the next thing it is for.
+bit source, and the `bits` suite had been running SmallCrush over a `UInt32`
+stream for want of them. `--battery=alphabit` and `--battery=rabbit` now run
+them, replays included; see [The batteries that were built for
+bits](#The-batteries-that-were-built-for-bits). `BlockAlphabit` is in the layer
+but not wired to the command line: its repeat form takes a block width as well,
+and nothing here has asked for it yet.
 
 Two rules the layer enforces that the C library only documents. **One generator
 at a time**: TestU01 keeps its state in globals and crashes if a second

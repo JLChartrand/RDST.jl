@@ -10,14 +10,15 @@
 #
 #     julia scripts/testu01/validate.jl --list
 #     julia scripts/testu01/validate.jl --battery=crush --generator=Xoshiro256p
-#     julia scripts/testu01/validate.jl --battery=bigcrush --suite=bits
+#     julia scripts/testu01/validate.jl --battery=alphabit --suite=bits
 #
 # Options
-#   --battery=smallcrush|crush|bigcrush   default smallcrush
+#   --battery=<name>                      default smallcrush; see BATTERIES
 #   --suite=single|interleaved|bits|all   default single
 #   --generator=<name>|all                default all
 #   --streams=<n>                         streams for the interleaved suite (64)
 #   --values=<n>                          values per stream, interleaved (1)
+#   --bits=<n>                            bits for alphabit/rabbit (2^30)
 #   --out=<dir>                           default testu01-results
 #   --list                                print the plan and exit
 #   --quiet                               summary only, no per-test reports
@@ -148,11 +149,25 @@ the platform where the real one fails.
 """
 closure_unsupported(err) = occursin("closures are not supported", sprint(showerror, err))
 
+# Each entry runs one battery over a live generator and returns its statistics.
+# The bit-level batteries take the number of bits to consume, which is why they
+# are given the options rather than the generator alone.
+#
+# Crush and BigCrush examine the 30 most significant bits of a U(0,1) output and
+# were never meant for an integer stream; Rabbit and Alphabit are the batteries
+# that were. They are worth running on any of the three suites -- unif01 extracts
+# bits from a double as readily as from a word -- but the `bits` suite is where
+# they answer a question nothing else here does.
 const BATTERIES = Dict(
-    "smallcrush" => (TU01.smallcrush, "minutes"),
-    "crush"      => (TU01.crush,      "a few hours"),
-    "bigcrush"   => (TU01.bigcrush,   "most of a day"),
+    "smallcrush" => ((g, o) -> TU01.smallcrush(g),     "minutes"),
+    "crush"      => ((g, o) -> TU01.crush(g),          "a few hours"),
+    "bigcrush"   => ((g, o) -> TU01.bigcrush(g),       "most of a day"),
+    "alphabit"   => ((g, o) -> TU01.alphabit(g, o.bits), "under a minute at 2^30 bits"),
+    "rabbit"     => ((g, o) -> TU01.rabbit(g, o.bits),   "about ten minutes at 2^30 bits"),
 )
+
+"Batteries that consume a fixed number of bits rather than running to a fixed size."
+const BIT_BATTERIES = ("alphabit", "rabbit")
 
 # Per-test reports are on for a validation run -- every test with its parameters
 # and its p-value -- both because that is the canonical TestU01 artefact to
@@ -164,7 +179,7 @@ const BATTERIES = Dict(
 
 function parse_args(args)
     opts = (battery = "smallcrush", suite = "single", generator = "all",
-            streams = 64, values = 1, out = "testu01-results",
+            streams = 64, values = 1, bits = 2.0^30, out = "testu01-results",
             list = false, quiet = false)
     for a in args
         if a == "--list"
@@ -178,13 +193,16 @@ function parse_args(args)
             k == "generator" ? (opts = merge(opts, (generator = v,))) :
             k == "streams"   ? (opts = merge(opts, (streams = parse(Int, v),))) :
             k == "values"    ? (opts = merge(opts, (values = parse(Int, v),))) :
+            k == "bits"      ? (opts = merge(opts, (bits = parse(Float64, v),))) :
             k == "out"       ? (opts = merge(opts, (out = v,))) :
             error("unknown option: $a")
         else
             error("unexpected argument: $a")
         end
     end
-    haskey(BATTERIES, opts.battery) || error("unknown battery: $(opts.battery)")
+    haskey(BATTERIES, opts.battery) ||
+        error("unknown battery: $(opts.battery) (have $(join(sort(collect(keys(BATTERIES))), ", ")))")
+    opts.bits > 0 || error("--bits must be positive")
     return opts
 end
 
@@ -212,7 +230,9 @@ function main(args)
     println("TestU01 validation -- ", opts.battery)
     println("Julia ", VERSION, ", ", Sys.CPU_NAME, ", ", Sys.MACHINE)
     println(provenance_line(PROV))
-    println(length(runs), " run(s), each taking ", duration, " for this battery\n")
+    println(length(runs), " run(s), each taking ", duration, " for this battery")
+    opts.battery in BIT_BATTERIES && @printf("%.0f bits per run (--bits)\n", opts.bits)
+    println()
     for (n, s) in runs
         @printf("  %-16s %s\n", n, s)
     end
@@ -225,7 +245,7 @@ function main(args)
     index = joinpath(opts.out, "summary.tsv")
     isfile(index) || open(io -> println(io,
         "timestamp\tbattery\tsuite\tgenerator\tseconds\tlog\tjulia\tcpu\t" *
-        "commit\tdirty\tpkgversion\tstreams\tvalues\tstatistics\tsuspect\tfailed\tminp"),
+        "commit\tdirty\tpkgversion\tstreams\tvalues\tbits\tstatistics\tsuspect\tfailed\tminp"),
         index, "w")
     # One line per statistic, for every run in this directory: the exact
     # p-values, which the printed report only ever shows in its own formatting
@@ -263,6 +283,10 @@ function main(args)
                 println(io, "# started ", now())
                 suite == "interleaved" &&
                     println(io, "# ", opts.streams, " streams, ", opts.values, " value(s) each, round-robin")
+                # A replay of a bit-level battery has to consume the same number
+                # of bits, so the run records it where replay.jl can read it.
+                opts.battery in BIT_BATTERIES &&
+                    @printf(io, "# bits = %.0f\n", opts.bits)
                 flush(io)
                 # TestU01 writes its report from C. Redirecting the descriptor is
                 # not enough on its own: C stdout is block-buffered when it is not
@@ -273,7 +297,7 @@ function main(args)
                     try
                         TU01.line_buffer_stdout()
                         TU01.verbose!(!opts.quiet)
-                        stats = battery(g)
+                        stats = battery(g, opts)
                     finally
                         TU01.flush_c_stdout()
                     end
@@ -299,6 +323,7 @@ function main(args)
                               PROV.version,
                               suite == "interleaved" ? opts.streams : "",
                               suite == "interleaved" ? opts.values : "",
+                              opts.battery in BIT_BATTERIES ? @sprintf("%.0f", opts.bits) : "",
                               length(stats), length(bad), length(failed), extreme), '\t'))
         end
 

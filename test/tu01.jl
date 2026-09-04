@@ -328,12 +328,20 @@ end
     NTESTS
 
 Tests per battery — the size `rep[]` is indexed by, and not the number of
-statistics the battery reports (Crush: 96 tests, 144 statistics).
+statistics the battery reports (Crush: 96 tests, 144 statistics; Alphabit: 9
+tests, 17 statistics).
+
+The two bit-level counts were established by running each repeat battery with
+`rep` set for one test at a time and seeing which numbers produced statistics.
+Rabbit is 26 even though a short run leaves two of them empty: tests 22 and 23
+are the larger `MatrixRank`s, which it skips when `nb` is too small to feed
+them.
 """
-const NTESTS = Dict(:smallcrush => 10, :crush => 96, :bigcrush => 106)
+const NTESTS = Dict(:smallcrush => 10, :crush => 96, :bigcrush => 106,
+                    :alphabit => 9, :rabbit => 26)
 
 """
-    repeat_battery(battery, g, rep) -> Vector{Statistic}
+    repeat_battery(battery, g, rep; nb = 0, r = 0, s = 32) -> Vector{Statistic}
 
 `bbattery_Repeat<Battery>`: apply test *i* of the battery `rep[i]` times and
 skip the rest. Resolving three suspects of a Crush run costs minutes against the
@@ -341,13 +349,18 @@ hours the battery itself took, which is what makes the guide's "replicate until
 suspicion disappears" affordable at BigCrush.
 
 `rep` is indexed by the battery's own test numbers, which start at 1, so it
-needs one more element than the battery has tests; element 0 is never read.
+needs one more element than the battery has tests; element 0 is never read. The
+bit-level batteries need the same `nb`, `r` and `s` the original run used, or
+the replay is not a replication of it.
 """
-function repeat_battery(battery::Symbol, g::Gen, rep::Vector{Cint})
+function repeat_battery(battery::Symbol, g::Gen, rep::Vector{Cint};
+                        nb::Real = 0, r::Integer = 0, s::Integer = 32)
     n = get(NTESTS, battery, nothing)
     n === nothing && error("no repeat battery for $battery")
     length(rep) == n + 1 ||
         error("rep has $(length(rep)) elements; $battery needs $(n + 1)")
+    (battery === :alphabit || battery === :rabbit) && nb <= 0 &&
+        error("$battery needs the number of bits the original run used (nb)")
     GC.@preserve g rep begin
         # ccall needs a literal symbol, so the batteries are spelled out.
         if battery === :smallcrush
@@ -359,6 +372,12 @@ function repeat_battery(battery::Symbol, g::Gen, rep::Vector{Cint})
         elseif battery === :bigcrush
             ccall((:bbattery_RepeatBigCrush, libtestu01), Cvoid,
                   (Ptr{Cvoid}, Ptr{Cint}), g.ptr, rep)
+        elseif battery === :rabbit
+            ccall((:bbattery_RepeatRabbit, libtestu01), Cvoid,
+                  (Ptr{Cvoid}, Cdouble, Ptr{Cint}), g.ptr, nb, rep)
+        elseif battery === :alphabit
+            ccall((:bbattery_RepeatAlphabit, libtestu01), Cvoid,
+                  (Ptr{Cvoid}, Cdouble, Cint, Cint, Ptr{Cint}), g.ptr, nb, r, s, rep)
         end
     end
     return results()
