@@ -52,9 +52,14 @@ Heavier validation is on demand and outside `Pkg.test()`:
 ```bash
 julia scripts/testu01/validate.jl --list
 julia scripts/testu01/validate.jl --battery=crush --generator=Xoshiro256p --suite=interleaved
-julia scripts/testu01/campaign.jl --battery=crush --jobs=6      # the full matrix
-julia -O3 scripts/benchmarks/throughput.jl                      # timings
+julia scripts/testu01/validate.jl --battery=alphabit --suite=bits   # the bit-level battery
+julia scripts/testu01/campaign.jl --battery=crush --jobs=6          # the full matrix
+julia -O3 scripts/benchmarks/throughput.jl                          # timings
 ```
+
+The batteries are `smallcrush`, `crush`, `bigcrush`, `alphabit` and `rabbit`.
+A campaign runs the last two on its `bits` suite whatever `--battery` says,
+since Crush and BigCrush were never built for an integer stream.
 
 Crush takes hours per generator and BigCrush the better part of a day, so use
 `campaign.jl` — it runs the matrix as independent processes, records what

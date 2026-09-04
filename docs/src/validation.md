@@ -242,8 +242,9 @@ are different counts.
 
 ### The Crush campaign, worked through
 
-The 2026 Crush campaign — seventeen generators, three suites, 51 runs — gives
-the rule something to bite on. **No p-value came within four orders of
+The 2026 Crush campaign — seventeen generators, three suites, 51 runs, with
+Crush itself on the `bits` suite, as the campaign was shaped before Alphabit and
+Rabbit were reachable — gives the rule something to bite on. **No p-value came within four orders of
 magnitude of 10⁻¹⁰**, so nothing was a failure outright. Eighteen lines were
 singled out across fifteen runs, against ≈15 expected: an unremarkable count,
 but a count is not an answer for any particular line.
@@ -275,10 +276,11 @@ p-value, the replications, and the p-values themselves — not a verdict.
 ## Long campaigns: running for days without a session
 
 `validate.jl` runs one battery in one process, serially. That is the wrong shape
-for a BigCrush sweep: the full matrix is seventeen generators times three
-suites, 51 runs, each taking the better part of a day, so a single process means
-weeks of sequential work in which one crash loses everything and a lost SSH
-session ends the campaign.
+for a BigCrush sweep: the full matrix is 68 runs — seventeen generators on the
+`single` and `interleaved` suites, plus Alphabit and Rabbit on the `bits` suite
+— most of them taking the better part of a day, so a single process means weeks
+of sequential work in which one crash loses everything and a lost SSH session
+ends the campaign.
 
 `scripts/testu01/campaign.jl` runs the same matrix as independent OS processes:
 
@@ -295,6 +297,16 @@ julia scripts/testu01/campaign.jl --battery=bigcrush --jobs=6
 
 `--battery` is required: there is deliberately no default, so that a stray
 invocation cannot start a two-week sweep.
+
+**The `bits` leg does not run `--battery`.** Crush and BigCrush examine the 30
+most significant bits of a `U(0,1)` output, so over an integer stream they are
+the wrong instrument — running one there was what the campaign did for want of
+an alternative. A campaign now runs **Alphabit and Rabbit** on the `bits` suite
+whatever `--battery` says, which is where the extra seventeen runs come from.
+`--bits-battery=<name>[,<name>]` overrides that, and passing the same name as
+`--battery` restores the old uniform matrix; `--bits=<n>` sets the size those
+two consume. `validate.jl` stays orthogonal — it runs any battery over any
+suite, and this pairing is the campaign's policy, not the library's.
 
 **Resuming is the point.** `summary.tsv` records one line per finished
 `(battery, suite, generator)`. Re-running the same command skips those and does

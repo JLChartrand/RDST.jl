@@ -6,7 +6,41 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **TestU01 is driven directly, and RNGTest.jl is no longer a dependency.**
+  `test/tu01.jl` calls the same `TestU01_jll` artifact the wrapper used, and
+  covers what this package runs: the three Crush batteries, the `Repeat`
+  batteries, the bit-level batteries, and the three C globals — `bbattery_pVal`,
+  `bbattery_NTests`, `bbattery_TestNames` — that hold a battery's answer and
+  that RNGTest exposes none of. Every p-value is now the double the library
+  computed rather than a number parsed back out of a formatted report, which is
+  what a threshold of `1e-10` needs. Each run writes `pvalues.tsv` (one line per
+  statistic, with its class), `summary.tsv` gained the counts and the most
+  extreme p-value, and a replay reports the p-values of the tests it repeated.
+  The test suite now runs `bbattery_SmallCrush` itself and asserts on all 15 of
+  its statistics, in place of RNGTest's Julia reimplementation — about 15% more
+  per battery, and the battery the literature names. Two hazards inherited from
+  the wrapper are gone with it: the `@cfunction` handle TestU01 calls through is
+  now rooted for the generator's lifetime, and `swrite_Basic`, a four-byte
+  `int`, is no longer written eight bytes wide.
+
+- **A campaign's `bits` suite runs Alphabit and Rabbit, not `--battery`.** Crush
+  and BigCrush examine the 30 most significant bits of a `U(0,1)` output and
+  were never built for an integer stream; they were what the `bits` leg ran for
+  want of an alternative. `campaign.jl` now pairs that leg with the bit-level
+  batteries — 68 runs instead of 51 — and `--bits-battery` overrides it, with
+  the same name as `--battery` restoring the old uniform matrix. `validate.jl`
+  stays orthogonal: any battery, any suite.
+
 ### Added
+
+- **Alphabit and Rabbit**, TestU01's bit-level batteries, which RNGTest never
+  wrapped. `validate.jl --battery=alphabit|rabbit`, sized by `--bits` (2^30 by
+  default), with replays: a replay consumes the same number of bits as the run
+  it replicates, which the log header records. Measured on one generator at that
+  size, Alphabit is 17 statistics in about half a minute and Rabbit some forty
+  in about ten.
 
 - **A campaign supervisor that does not need `loginctl enable-linger`.**
   `scripts/run-campaign.sh` takes `--supervisor=auto|systemd|tmux`: systemd when

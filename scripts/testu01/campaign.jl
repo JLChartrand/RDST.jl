@@ -14,7 +14,9 @@
 #
 # Options
 #   --battery=<name>                      REQUIRED, no default; see BATTERIES
-#   --bits=<n>                              size for alphabit/rabbit
+#   --bits-battery=<name>[,<name>]        what the bits suite runs
+#                                         (default alphabit,rabbit)
+#   --bits=<n>                            size for alphabit/rabbit
 #   --suite=single|interleaved|bits|all   default all
 #   --generator=<name>|all                default all
 #   --jobs=<n>                            concurrent processes (default: cores/4)
@@ -54,6 +56,16 @@ const BATTERIES = ["smallcrush", "crush", "bigcrush", "alphabit", "rabbit"]
 "Batteries that take a size in bits, which is forwarded to the jobs."
 const BIT_BATTERIES = ("alphabit", "rabbit")
 
+# What the `bits` suite runs, which is not what the other two run.
+#
+# Crush and BigCrush examine the 30 most significant bits of a U(0,1) output and
+# were never built for an integer stream; running one of them over the bit path
+# was what we had before TestU01's own bit-level batteries were reachable. They
+# are reachable now, so the bits leg of a campaign runs those instead, whatever
+# `--battery` says for the other two suites. `--bits-battery` overrides it --
+# passing the same name as `--battery` restores the old, uniform matrix.
+const BITS_BATTERIES = ["alphabit", "rabbit"]
+
 # The generator list is `validate.jl`'s, read from it rather than duplicated, so
 # that adding a generator there adds it to the campaign.
 function generator_names()
@@ -70,6 +82,7 @@ function parse_args(args)
     opts = Dict{String,Any}("battery" => "", "suite" => "all",
                             "generator" => "all", "out" => "testu01-results",
                             "jobs" => max(1, Sys.CPU_THREADS ÷ 4), "bits" => "",
+                            "bits-battery" => BITS_BATTERIES,
                             "calibrate" => false, "status" => false, "list" => false)
     for a in args
         if a in ("--calibrate", "--status", "--list")
@@ -79,7 +92,8 @@ function parse_args(args)
             i === nothing && error("option needs a value: $a")
             k, v = a[3:i-1], a[i+1:end]
             haskey(opts, k) || error("unknown option: $a")
-            opts[k] = k == "jobs" ? parse(Int, v) : v
+            opts[k] = k == "jobs" ? parse(Int, v) :
+                      k == "bits-battery" ? String.(split(v, ',')) : v
         else
             error("unexpected argument: $a")
         end
@@ -87,15 +101,28 @@ function parse_args(args)
     isempty(opts["battery"]) &&
         error("--battery is required: one of " * join(BATTERIES, ", "))
     opts["battery"] in BATTERIES || error("unknown battery: $(opts["battery"])")
+    for b in opts["bits-battery"]
+        b in BATTERIES || error("unknown battery for the bits suite: $b")
+    end
     return opts
 end
 
 # The matrix, and what is left of it -------------------------------------------
 
+"""
+    batteries_for(suite, opts) -> Vector{String}
+
+The batteries a campaign runs on one suite: `--battery` for `single` and
+`interleaved`, and `--bits-battery` for `bits` -- two batteries by default,
+which is why the matrix is no longer one job per (suite, generator).
+"""
+batteries_for(suite, opts) =
+    suite == "bits" ? opts["bits-battery"] : [opts["battery"]]
+
 function matrix(opts)
     names  = opts["generator"] == "all" ? generator_names() : [opts["generator"]]
     suites = opts["suite"] == "all" ? SUITES : [opts["suite"]]
-    return [(opts["battery"], s, g) for s in suites for g in names]
+    return [(b, s, g) for s in suites for g in names for b in batteries_for(s, opts)]
 end
 
 "Finished jobs, from the consolidated index and from each job's own directory."
