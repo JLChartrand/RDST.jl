@@ -25,17 +25,8 @@
 using RandomDataStreams
 using Test
 using Random
-using RNGTest
 
-@isdefined(check_battery) || include("testu01_support.jl")
-
-
-# RNGTest drives an AbstractRNG through `rand!`, so a stream of constructed
-# words is exposed as a generator of UInt32.
-mutable struct BitStream{F} <: AbstractRNG
-    draw::F                                   # () -> UInt32
-end
-Random.rand(w::BitStream, ::Random.SamplerType{UInt32}) = w.draw()
+@isdefined(check_smallcrush) || include("testu01_support.jl")
 
 "Split each 64-bit draw into its two halves, low first."
 function halves_of_u64(rng)
@@ -68,8 +59,7 @@ end
 
     for (name, mk) in streams
         @testset "$name" begin
-            check_battery(() -> RNGTest.smallcrushJulia(RNGTest.wrap(BitStream(mk()), UInt32)),
-                          "bits / $name")
+            check_smallcrush(() -> TU01.bitgen(mk(), name), "bits / $name")
         end
     end
 end

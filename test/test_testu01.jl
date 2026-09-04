@@ -1,9 +1,15 @@
 
 using RandomDataStreams
 using Test
-using RNGTest
 
-@isdefined(check_battery) || include("testu01_support.jl")
+@isdefined(check_smallcrush) || include("testu01_support.jl")
+
+# TestU01 calls back into Julia through a C function pointer, so the callback
+# must be inferred as Float64: the generator tables below have an abstract
+# element type, and a closure written over one of their entries directly would
+# return Any. Going through this barrier specialises on the runtime type and
+# closes over something concrete.
+single_stream(rng) = () -> rand(rng, Float64)
 
 
 @testset "battery guard" begin
@@ -33,11 +39,9 @@ end
 
     for (name, gen_init) in generators
         @testset "$name" begin
-            gen = gen_init()
-            rng = next_stream!(gen)
-            
-            wrapper = () -> rand(rng, Float64)      # Float64 in [0, 1)
-            check_battery(() -> RNGTest.smallcrushJulia(wrapper), "SmallCrush / $name")
+            rng = next_stream!(gen_init())          # Float64 in [0, 1)
+            check_smallcrush(() -> TU01.Gen(single_stream(rng), name),
+                             "SmallCrush / $name")
         end
     end
 end

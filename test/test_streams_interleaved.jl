@@ -13,12 +13,11 @@
 
 using RandomDataStreams
 using Test
-using RNGTest
 
-@isdefined(check_battery) || include("testu01_support.jl")
+@isdefined(check_smallcrush) || include("testu01_support.jl")
 
 
-# RNGTest hands the callback to C, so it has to be a `Function` whose return
+# TestU01 calls the callback from C, so it has to be a `Function` whose return
 # type infers to Float64; a mutable functor behind a closure gives both.
 mutable struct RoundRobin{R}
     streams::Vector{R}
@@ -59,8 +58,9 @@ end
     for (name, gen_init) in generators
         @testset "$name" begin
             f = interleaved(gen_init, 64, 1)
-            @test Base.return_types(f, ())[1] === Float64   # else the C callback crashes
-            check_battery(() -> RNGTest.smallcrushJulia(f), "interleaved / $name")
+            # `TU01.Gen` refuses a callback that does not infer as Float64,
+            # which is what would otherwise crash the C side.
+            check_smallcrush(() -> TU01.Gen(f, name), "interleaved / $name")
         end
     end
 end

@@ -19,8 +19,15 @@ using Pkg, TOML
 "Repository root, from a script directory two levels below it."
 repo_root(scriptdir::AbstractString) = abspath(joinpath(scriptdir, "..", ".."))
 
-"`true` when the environment's Manifest already resolves the package to `root`."
-function _manifest_points_at(scriptdir::AbstractString, root::AbstractString)
+"""
+`true` when the environment's Manifest already resolves the package to `root`
+*and* covers everything the Project asks for.
+
+The second half matters when a dependency is added to `Project.toml` later: the
+Manifest still points at the checkout, so the resolution would be skipped, and
+the script would then fail at `using` on a package that was never installed.
+"""
+function _manifest_current(scriptdir::AbstractString, root::AbstractString)
     manifest = joinpath(scriptdir, "Manifest.toml")
     isfile(manifest) || return false
     try
@@ -33,7 +40,9 @@ function _manifest_points_at(scriptdir::AbstractString, root::AbstractString)
         entry isa AbstractVector && (entry = first(entry))
         path = get(entry, "path", nothing)
         path === nothing && return false
-        return realpath(abspath(joinpath(scriptdir, path))) == realpath(root)
+        realpath(abspath(joinpath(scriptdir, path))) == realpath(root) || return false
+        project = TOML.parsefile(joinpath(scriptdir, "Project.toml"))
+        return all(haskey(entries, name) for name in keys(get(project, "deps", Dict())))
     catch
         return false          # unreadable or unexpected: redo the resolution
     end
@@ -49,7 +58,7 @@ already arranged it, so concurrent jobs do not fight over the Manifest.
 function ensure_checkout_env(scriptdir::AbstractString)
     root = repo_root(scriptdir)
     Pkg.activate(scriptdir)
-    if !_manifest_points_at(scriptdir, root)
+    if !_manifest_current(scriptdir, root)
         Pkg.develop(path = root)
         Pkg.instantiate()
     end

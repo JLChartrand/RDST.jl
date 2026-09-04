@@ -40,10 +40,13 @@
 
 include("validate.jl")
 
-# Sizes of the rep[] arrays. TestU01's restriction is that rep must have "one
-# more element than the number of tests in the battery": rep is indexed by the
-# battery's own test numbers, which start at 1, so element 0 is never read.
-const BATTERY_NTESTS = Dict("smallcrush" => 10, "crush" => 96, "bigcrush" => 106)
+# Tests per battery, for sizing rep[]. TestU01's restriction is that rep must
+# have "one more element than the number of tests in the battery": rep is
+# indexed by the battery's own test numbers, which start at 1, so element 0 is
+# never read. The layer keeps the table; here it is reached by the battery names
+# the command line uses.
+ntests(battery::AbstractString) = TU01.NTESTS[Symbol(battery)]
+known_battery(battery::AbstractString) = haskey(TU01.NTESTS, Symbol(battery))
 
 # Past everything any suite of the campaign consumes: `single` and `bits` take
 # stream 1, `interleaved` takes 1..streams (64 by default). A round number well
@@ -137,53 +140,14 @@ function build_disjoint(suite::String, name::String, streams::Int, values::Int, 
     for _ in 1:skip
         next_stream!(g)
     end
-    gen = if suite == "single"
-        _single_stream(next_stream!(g))
+    if suite == "single"
+        return TU01.Gen(_single_stream(next_stream!(g)), name)
     elseif suite == "bits"
-        _bit_stream(next_stream!(g))
+        return TU01.bitgen(_bit_stream(next_stream!(g)), name)
     elseif suite == "interleaved"
-        _interleaved([next_stream!(g) for _ in 1:streams], values)
-    else
-        error("unknown suite: $suite")
+        return TU01.Gen(_interleaved([next_stream!(g) for _ in 1:streams], values), name)
     end
-    if gen isa Function
-        rt = Base.return_types(gen, ())
-        (length(rt) == 1 && rt[1] === Float64) ||
-            error("callback for $name/$suite is not inferred as Float64 (got $rt); " *
-                  "handing it to TestU01 would crash")
-    end
-    return gen
-end
-
-"""
-    repeat_battery(battery, gen, rep)
-
-`bbattery_Repeat<Battery>`, which RNGTest does not wrap. The generator object
-is built and freed exactly as RNGTest's own battery functions do it: TestU01
-keeps global state and crashes if two live at once, so the delete is not
-optional and belongs in a finally.
-"""
-function repeat_battery(battery::String, gen, rep::Vector{Cint})
-    length(rep) == BATTERY_NTESTS[battery] + 1 ||
-        error("rep has $(length(rep)) elements; $battery needs $(BATTERY_NTESTS[battery] + 1)")
-    u = RNGTest.Unif01(gen, "")
-    try
-        # ccall needs a literal symbol, so the three batteries are spelled out.
-        if battery == "smallcrush"
-            ccall((:bbattery_RepeatSmallCrush, RNGTest.libtestu01), Cvoid,
-                  (Ptr{Cvoid}, Ptr{Cint}), u.ptr, rep)
-        elseif battery == "crush"
-            ccall((:bbattery_RepeatCrush, RNGTest.libtestu01), Cvoid,
-                  (Ptr{Cvoid}, Ptr{Cint}), u.ptr, rep)
-        elseif battery == "bigcrush"
-            ccall((:bbattery_RepeatBigCrush, RNGTest.libtestu01), Cvoid,
-                  (Ptr{Cvoid}, Ptr{Cint}), u.ptr, rep)
-        else
-            error("unknown battery: $battery")
-        end
-    finally
-        RNGTest.delete(u)
-    end
+    error("unknown suite: $suite")
 end
 
 function parse_args(args)
@@ -232,14 +196,14 @@ function parse_args(args)
     end
 
     isempty(opts.battery) && error("--battery is required (or --log, which carries it)")
-    haskey(BATTERY_NTESTS, opts.battery) || error("unknown battery: $(opts.battery)")
+    known_battery(opts.battery) || error("unknown battery: $(opts.battery)")
     isempty(opts.suite) && error("--suite is required (or --log)")
     isempty(opts.generator) && error("--generator is required (or --log)")
     isempty(opts.out) && (opts = merge(opts, (out = "testu01-results",)))
     opts.reps >= 1 || error("--reps must be at least 1")
     opts.skip >= 1 || error("--skip must be at least 1: the point is disjoint output")
 
-    n = BATTERY_NTESTS[opts.battery]
+    n = ntests(opts.battery)
     for t in opts.tests
         1 <= t <= n || error("test $t is not in $(opts.battery), which has $n tests")
     end
@@ -272,7 +236,7 @@ function main(args)
         return
     end
 
-    rep = zeros(Cint, BATTERY_NTESTS[opts.battery] + 1)
+    rep = zeros(Cint, ntests(opts.battery) + 1)
     for t in opts.tests
         rep[t + 1] = opts.reps       # rep[i] in C is rep[i+1] here
     end
@@ -286,24 +250,27 @@ function main(args)
     println("\n--> ", log)
     flush(stdout)
 
-    elapsed = open(log, "w") do io
-        println(io, "# ", opts.battery, " / ", opts.suite, " / ", opts.generator)
-        println(io, "# Julia ", VERSION, ", ", Sys.CPU_NAME, ", ", Sys.MACHINE)
-        println(io, "# ", provenance_line(PROV))
-        println(io, "# started ", now())
-        println(io, "# REPLAY of tests ", join(opts.tests, ", "), ", ", opts.reps, " time(s) each")
-        println(io, "# streams skipped before building the generator: ", opts.skip)
-        isempty(opts.log) || println(io, "# source log: ", opts.log)
-        opts.suite == "interleaved" &&
-            println(io, "# ", opts.streams, " streams, ", opts.values, " value(s) each, round-robin")
-        flush(io)
-        @elapsed redirect_stdout(io) do
-            try
-                line_buffer_c_stdout()
-                set_testu01_verbose(true)
-                repeat_battery(opts.battery, gen, rep)
-            finally
-                ccall(:fflush, Cint, (Ptr{Cvoid},), C_NULL)
+    stats = TU01.Statistic[]
+    elapsed = TU01.withgen(gen) do g
+        open(log, "w") do io
+            println(io, "# ", opts.battery, " / ", opts.suite, " / ", opts.generator)
+            println(io, "# Julia ", VERSION, ", ", Sys.CPU_NAME, ", ", Sys.MACHINE)
+            println(io, "# ", provenance_line(PROV))
+            println(io, "# started ", now())
+            println(io, "# REPLAY of tests ", join(opts.tests, ", "), ", ", opts.reps, " time(s) each")
+            println(io, "# streams skipped before building the generator: ", opts.skip)
+            isempty(opts.log) || println(io, "# source log: ", opts.log)
+            opts.suite == "interleaved" &&
+                println(io, "# ", opts.streams, " streams, ", opts.values, " value(s) each, round-robin")
+            flush(io)
+            @elapsed redirect_stdout(io) do
+                try
+                    TU01.line_buffer_stdout()
+                    TU01.verbose!(true)
+                    stats = TU01.repeat_battery(Symbol(opts.battery), g, rep)
+                finally
+                    TU01.flush_c_stdout()
+                end
             end
         end
     end
@@ -311,18 +278,36 @@ function main(args)
     index = joinpath(opts.out, "replays.tsv")
     isfile(index) || open(io -> println(io,
         "timestamp\tbattery\tsuite\tgenerator\ttests\treps\tskip\tseconds\tlog\t" *
-        "julia\tcpu\tcommit\tdirty\tpkgversion\tsource"), index, "w")
+        "julia\tcpu\tcommit\tdirty\tpkgversion\tsource\tstatistics\tsuspect\tfailed"), index, "w")
     open(index, "a") do io
         println(io, join((now(), opts.battery, opts.suite, opts.generator,
                           join(opts.tests, ","), opts.reps, opts.skip,
                           round(elapsed, digits = 1), log, VERSION, Sys.CPU_NAME,
-                          PROV.commit, PROV.dirty, PROV.version, opts.log), '\t'))
+                          PROV.commit, PROV.dirty, PROV.version, opts.log,
+                          length(stats), length(TU01.suspects(stats)),
+                          length(TU01.failures(stats))), '\t'))
+    end
+
+    # Every statistic the replay produced, not only the ones a battery would
+    # single out: what settles a suspect is the spread of the replications, and
+    # the guide is explicit that reporting the p-values "provides more
+    # information" than a verdict against a threshold.
+    pvals = joinpath(opts.out, "replay-pvalues.tsv")
+    isfile(pvals) || open(io -> println(io,
+        "timestamp\tbattery\tsuite\tgenerator\treps\tindex\tname\tp\tclass\tlog"), pvals, "w")
+    open(pvals, "a") do io
+        for st in stats
+            println(io, join((now(), opts.battery, opts.suite, opts.generator, opts.reps,
+                              st.index, st.name, st.p, TU01.classify(st.p),
+                              basename(log)), '\t'))
+        end
     end
 
     @printf("    done in %.1f s\n", elapsed)
     println()
-    for (t, name, p) in suspects(log)
-        @printf("  test %3d  %-32s p = %s\n", t, name, p)
+    for st in stats
+        @printf("  %3d  %-34s p = %-24g %s\n", st.index, st.name, st.p,
+                TU01.classify(st.p) === :pass ? "" : string("<-- ", TU01.classify(st.p)))
     end
     println()
     println("Read those against the originals. A p-value that stays extreme across")
@@ -331,6 +316,7 @@ function main(args)
     println("a verdict: the TestU01 guide is explicit that this is more informative")
     println("than reject/do-not-reject against a fixed threshold.")
     println("\nIndex: ", index)
+    println("p-values: ", pvals)
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

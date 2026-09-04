@@ -22,14 +22,22 @@
 #   --list                                print the plan and exit
 #   --quiet                               summary only, no per-test reports
 #
-# Each run writes the battery's own TestU01 report to its own log file and
-# appends one line to `summary.tsv`. Read the reports: TestU01 ends with a
-# summary naming every test whose p-value falls outside [1e-3, 1-1e-3].
+# Each run writes three things: the battery's own TestU01 report, to its own log
+# file; one line per statistic in `pvalues.tsv`, taken from `bbattery_pVal[]`
+# rather than from the printed report, so the p-values are the doubles the
+# library computed and can be classified without parsing anything; and one line
+# in `summary.tsv` recording the run, its cost and how many statistics it
+# singled out.
 
 include(joinpath(@__DIR__, "..", "env.jl"))
 ensure_checkout_env(@__DIR__)
 
-using RandomDataStreams, Random, RNGTest, Printf, Dates
+using RandomDataStreams, Random, Printf, Dates
+
+# The TestU01 layer is shared with the test suite, which is why it lives under
+# `test/`: `Pkg.test()` has to be self-contained, and a script may reach
+# anywhere in the checkout it belongs to.
+include(joinpath(@__DIR__, "..", "..", "test", "tu01.jl"))
 
 assert_checkout(RandomDataStreams, @__DIR__)
 
@@ -92,19 +100,15 @@ function (g::RoundRobin)()
     return v
 end
 
-mutable struct BitStream{R} <: AbstractRNG
-    rng::R
-end
-Random.rand(w::BitStream, ::Random.SamplerType{UInt32}) = rand(w.rng, UInt32)
-
 # TestU01 calls back into Julia through a C function pointer, so the callback
-# must be a Function whose return type infers to Float64. The generator tables
-# have an abstract element type, so everything below goes through a function
-# barrier: called with a value of unknown type, these specialise on its runtime
-# type and close over something concrete. Without the barrier the callback
-# returns Any and the C side segfaults.
+# must be a Function whose return type infers to Float64 -- UInt32 for the bit
+# path. The generator tables have an abstract element type, so everything below
+# goes through a function barrier: called with a value of unknown type, these
+# specialise on its runtime type and close over something concrete. Without the
+# barrier the callback returns Any, which `TU01.Gen` refuses rather than letting
+# it reach the C side and crash there.
 _single_stream(rng) = () -> rand(rng, Float64)
-_bit_stream(rng) = RNGTest.wrap(BitStream(rng), UInt32)
+_bit_stream(rng) = () -> rand(rng, UInt32)
 _interleaved(streams::Vector, per::Int) =
     let g = RoundRobin(streams, 1, 0, per)
         () -> g()
@@ -114,69 +118,47 @@ stream_gen(name::String) =
     GENERATOR_STREAMS[findfirst(p -> first(p) == name, GENERATOR_STREAMS)].second()
 make_rng(name::String) = next_stream!(stream_gen(name))
 
+"""
+    build(suite, name, opts) -> TU01.Gen
+
+The live TestU01 generator for one run. Free it with `TU01.free!`, or let
+`TU01.withgen` do it: the library keeps exactly one at a time.
+"""
 function build(suite::String, name::String, opts)
-    gen = if suite == "single"
-        _single_stream(make_rng(name))
+    if suite == "single"
+        return TU01.Gen(_single_stream(make_rng(name)), name)
     elseif suite == "interleaved"
         g = stream_gen(name)
-        _interleaved([next_stream!(g) for _ in 1:opts.streams], opts.values)
+        return TU01.Gen(_interleaved([next_stream!(g) for _ in 1:opts.streams], opts.values), name)
     elseif suite == "bits"
-        _bit_stream(make_rng(name))
-    else
-        error("unknown suite: $suite")
+        return TU01.bitgen(_bit_stream(make_rng(name)), name)
     end
-    if gen isa Function
-        rt = Base.return_types(gen, ())
-        (length(rt) == 1 && rt[1] === Float64) ||
-            error("callback for $name/$suite is not inferred as Float64 (got $rt); " *
-                  "handing it to TestU01 would crash")
-    end
-    return gen
+    error("unknown suite: $suite")
 end
 
 """
-Re-enable TestU01's per-test reports.
+    closure_unsupported(err) -> Bool
 
-RNGTest clears `swrite_Basic` when it loads, which leaves only the final
-summary. For a validation run we want the canonical TestU01 report -- every
-test with its parameters and p-value -- both to archive and because it is what
-makes a battery running for hours observable: the log fills as the tests
-complete instead of staying empty until the end.
+Whether `err` is the one platform failure that stops everything: the callback is
+built with `@cfunction` over a closure, which needs an executable trampoline,
+and Apple Silicon forbids memory that is both writable and executable. It is
+caught at the real call rather than predicted by a probe -- a closure over a
+constant compiles to a singleton, needs no trampoline, and succeeds on exactly
+the platform where the real one fails.
 """
-function set_testu01_verbose(on::Bool)
-    try
-        unsafe_store!(RNGTest.swrite[], reinterpret(Ptr{Bool}, UInt(on)), 1)
-        return true
-    catch
-        return false
-    end
-end
-
-"""
-Put C's stdout in line-buffered mode.
-
-A battery runs for hours inside a single C call, and C stdout is block-buffered
-when it is not a terminal: without this the log stays empty until the run ends,
-so an interrupted or crashed run leaves nothing behind and progress cannot be
-followed with `tail -f`. Returns false if the C stdout symbol is not reachable,
-in which case the report still arrives, just all at once at the end.
-"""
-function line_buffer_c_stdout()
-    try
-        cstdout = unsafe_load(cglobal(:stdout, Ptr{Cvoid}))
-        ccall(:fflush, Cint, (Ptr{Cvoid},), cstdout)
-        ccall(:setvbuf, Cint, (Ptr{Cvoid}, Ptr{Cvoid}, Cint, Csize_t),
-              cstdout, C_NULL, Cint(1), Csize_t(0)) == 0     # 1 = _IOLBF
-    catch
-        false
-    end
-end
+closure_unsupported(err) = occursin("closures are not supported", sprint(showerror, err))
 
 const BATTERIES = Dict(
-    "smallcrush" => (RNGTest.smallcrushTestU01, "minutes"),
-    "crush"      => (RNGTest.crushTestU01,      "a few hours"),
-    "bigcrush"   => (RNGTest.bigcrushTestU01,   "most of a day"),
+    "smallcrush" => (TU01.smallcrush, "minutes"),
+    "crush"      => (TU01.crush,      "a few hours"),
+    "bigcrush"   => (TU01.bigcrush,   "most of a day"),
 )
+
+# Per-test reports are on for a validation run -- every test with its parameters
+# and its p-value -- both because that is the canonical TestU01 artefact to
+# archive and because it is what makes a battery running for hours observable:
+# the log fills as the tests complete instead of staying empty until the end.
+# `--quiet` leaves only the closing summary.
 
 # Driver ----------------------------------------------------------------------
 
@@ -243,7 +225,15 @@ function main(args)
     index = joinpath(opts.out, "summary.tsv")
     isfile(index) || open(io -> println(io,
         "timestamp\tbattery\tsuite\tgenerator\tseconds\tlog\tjulia\tcpu\t" *
-        "commit\tdirty\tpkgversion\tstreams\tvalues"), index, "w")
+        "commit\tdirty\tpkgversion\tstreams\tvalues\tstatistics\tsuspect\tfailed\tminp"),
+        index, "w")
+    # One line per statistic, for every run in this directory: the exact
+    # p-values, which the printed report only ever shows in its own formatting
+    # ("eps", "1 -  3.0e-9"). Classifying against 1e-10 is not something to do
+    # on text.
+    pvals = joinpath(opts.out, "pvalues.tsv")
+    isfile(pvals) || open(io -> println(io,
+        "timestamp\tbattery\tsuite\tgenerator\tindex\tname\tp\tclass\tlog"), pvals, "w")
 
     println()
     for (name, suite) in runs
@@ -255,17 +245,17 @@ function main(args)
         gen = try
             build(suite, name, opts)
         catch err
+            if closure_unsupported(err)
+                println("\nThis platform cannot build a C callback from a closure,")
+                println("which TestU01 needs to call back into Julia. Nothing can run here.")
+                exit(1)
+            end
             println("    SKIPPED: ", sprint(showerror, err))
             continue
         end
 
-        # RNGTest builds its callback with `@cfunction` over a closure, which
-        # needs an executable trampoline; Apple Silicon forbids memory that is
-        # both writable and executable, and nothing can run there. Catch that
-        # at the real call: a synthetic probe is not trustworthy, since a
-        # closure over a constant compiles to a singleton, needs no trampoline
-        # and succeeds on exactly the platform where the real one fails.
-        elapsed = try
+        stats = TU01.Statistic[]
+        elapsed = TU01.withgen(gen) do g
             open(log, "w") do io
                 println(io, "# ", opts.battery, " / ", suite, " / ", name)
                 println(io, "# Julia ", VERSION, ", ", Sys.CPU_NAME, ", ", Sys.MACHINE)
@@ -281,36 +271,55 @@ function main(args)
                 # instead of in the log.
                 @elapsed redirect_stdout(io) do
                     try
-                        line_buffer_c_stdout()
-                        set_testu01_verbose(!opts.quiet)
-                        battery(gen)
+                        TU01.line_buffer_stdout()
+                        TU01.verbose!(!opts.quiet)
+                        stats = battery(g)
                     finally
-                        ccall(:fflush, Cint, (Ptr{Cvoid},), C_NULL)
+                        TU01.flush_c_stdout()
                     end
                 end
             end
-        catch err
-            if occursin("closures are not supported", sprint(showerror, err))
-                println("\nThis platform cannot build a C callback from a closure,")
-                println("which RNGTest needs to drive TestU01. Nothing can run here.")
-                exit(1)
-            end
-            rethrow()
         end
 
+        bad = TU01.suspects(stats)
+        failed = TU01.failures(stats)
+        # How far the most extreme statistic sits from the middle: min(p, 1-p)
+        # over the run, so one number says whether anything happened at all.
+        extreme = isempty(stats) ? NaN : minimum(s -> min(s.p, 1 - s.p), stats)
+
+        open(pvals, "a") do io
+            for st in stats
+                println(io, join((now(), opts.battery, suite, name, st.index, st.name,
+                                  st.p, TU01.classify(st.p), basename(log)), '\t'))
+            end
+        end
         open(index, "a") do io
             println(io, join((now(), opts.battery, suite, name, round(elapsed, digits = 1),
                               log, VERSION, Sys.CPU_NAME, PROV.commit, PROV.dirty,
                               PROV.version,
                               suite == "interleaved" ? opts.streams : "",
-                              suite == "interleaved" ? opts.values : ""), '\t'))
+                              suite == "interleaved" ? opts.values : "",
+                              length(stats), length(bad), length(failed), extreme), '\t'))
         end
-        @printf("    done in %.1f s\n", elapsed)
+
+        @printf("    done in %.1f s -- %d statistics, ", elapsed, length(stats))
+        if !isempty(failed)
+            @printf("%d FAILED outright, %d singled out\n", length(failed), length(bad))
+        elseif !isempty(bad)
+            @printf("%d singled out (replay them: they are what replay.jl is for)\n", length(bad))
+        else
+            println("none singled out")
+        end
     end
 
     println("\nSummary index: ", index)
-    println("Read each log's final section: TestU01 lists every test whose")
-    println("p-value falls outside [1e-3, 1-1e-3], or says all tests were passed.")
+    println("Every p-value:  ", pvals)
+    println()
+    println("A statistic outside [1e-3, 1-1e-3] is *suspect*, which is a printing")
+    println("threshold and not a verdict: replay it with replay.jl before calling it")
+    println("anything. One outside [1e-10, 1-1e-10] is a failure outright. The test")
+    println("numbers replay.jl needs are in the log's closing summary; the p-values")
+    println("themselves are in pvalues.tsv, exactly as the library computed them.")
 end
 
 # Run the driver only when this file is the program. campaign.jl invokes it as

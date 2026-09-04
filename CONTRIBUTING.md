@@ -40,11 +40,12 @@ Pkg.develop(path = "path/to/RandomDataStreams.jl")
 Pkg.test("RandomDataStreams")
 ```
 
-The test suite takes a few minutes. It includes a SmallCrush run per generator,
+The test suite takes about six minutes, most of it the batteries. It includes a
+SmallCrush run per generator,
 which is an installation check rather than a validation: it confirms the build
 works, not that a generator is sound. The batteries do not run on Apple
-Silicon, where RNGTest cannot build the C callback TestU01 needs; the suite
-skips them and says so.
+Silicon, where Julia cannot build the C callback TestU01 needs from a closure;
+the suite skips them and says so.
 
 Heavier validation is on demand and outside `Pkg.test()`:
 

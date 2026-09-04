@@ -174,7 +174,7 @@ apply itself to.
 | [StableRNGs.jl](https://github.com/JuliaRandom/StableRNGs.jl) | a Lehmer LCG with output stable across Julia versions | complementary; its "stable streams" mean version stability, not a partition of the period |
 | [RandomExtensions.jl](https://github.com/JuliaRandom/RandomExtensions.jl) | distribution objects and `make` specifications for `rand` | orthogonal: it extends what you draw, not where you draw it from |
 | [VSL.jl](https://github.com/JuliaRandom/VSL.jl) | bindings to Intel MKL's Vector Statistics Library | MKL offers `vslSkipAheadStream` and `vslLeapfrogStream`; the bindings expose `vslNewStream`/`vslNewStreamEx` only |
-| [RNGTest.jl](https://github.com/JuliaRandom/RNGTest.jl) | the TestU01 interface | a dependency of ours — every battery in [Validation](validation.md) runs through it |
+| [RNGTest.jl](https://github.com/JuliaRandom/RNGTest.jl) | the TestU01 interface | the same C library we validate against, wrapped; we call it directly instead, for the reasons in [Validation](validation.md) |
 
 The practical consequence: if you need a fast generator, any of these will
 serve. If you need `n` streams that are provably disjoint, each rewindable to
